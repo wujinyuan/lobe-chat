@@ -1,11 +1,10 @@
-import { Tag, Typography } from 'antd';
-import { useTheme } from 'antd-style';
-import { CSSProperties, memo } from 'react';
-import { Flexbox } from 'react-layout-kit';
+import { Flexbox } from '@lobehub/ui';
+import { Tag, Text } from '@lobehub/ui/base-ui';
+import { cssVar } from 'antd-style';
+import { type CSSProperties } from 'react';
+import { memo } from 'react';
 
 import { calcGrowthPercentage } from './growthPercentage';
-
-const { Title } = Typography;
 
 interface TitleWithPercentageProps {
   count?: number;
@@ -17,34 +16,29 @@ interface TitleWithPercentageProps {
 const TitleWithPercentage = memo<TitleWithPercentageProps>(
   ({ inverseColor, title, prvCount, count }) => {
     const percentage = calcGrowthPercentage(count || 0, prvCount || 0);
-    const theme = useTheme();
 
     const upStyle: CSSProperties = {
-      background: theme.colorSuccessBg,
-      borderColor: theme.colorSuccessBorder,
-      color: theme.colorSuccess,
+      color: cssVar.colorSuccess,
     };
 
     const downStyle: CSSProperties = {
-      backgroundColor: theme.colorWarningBg,
-      borderColor: theme.colorWarningBorder,
-      color: theme.colorWarning,
+      color: cssVar.colorWarning,
     };
 
     return (
       <Flexbox
-        align={'center'}
-        gap={8}
         horizontal
+        align={'center'}
+        gap={4}
         justify={'flex-start'}
         style={{
           overflow: 'hidden',
           position: 'inherit',
         }}
       >
-        <Title
+        <Text
+          as={'h2'}
           ellipsis={{ rows: 1, tooltip: title }}
-          level={2}
           style={{
             fontSize: 'inherit',
             fontWeight: 'inherit',
@@ -54,11 +48,11 @@ const TitleWithPercentage = memo<TitleWithPercentageProps>(
           }}
         >
           {title}
-        </Title>
+        </Text>
         {count && prvCount && percentage && percentage !== 0 ? (
           <Tag
+            variant={'borderless'}
             style={{
-              borderWidth: 0.5,
               ...(inverseColor
                 ? percentage > 0
                   ? downStyle

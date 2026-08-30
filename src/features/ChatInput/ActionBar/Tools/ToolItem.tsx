@@ -1,44 +1,35 @@
-import { Checkbox } from 'antd';
-import { memo } from 'react';
-import { Flexbox } from 'react-layout-kit';
+import { Flexbox } from '@lobehub/ui';
+import { Text } from '@lobehub/ui/base-ui';
+import { memo, Suspense } from 'react';
 
-import PluginTag from '@/features/PluginStore/PluginItem/PluginTag';
-import { useAgentStore } from '@/store/agent';
-import { agentSelectors } from '@/store/agent/selectors';
-import { useToolStore } from '@/store/tool';
-import { customPluginSelectors } from '@/store/tool/selectors';
+import DebugNode from '@/components/DebugNode';
 
-const ToolItem = memo<{ identifier: string; label: string }>(({ identifier, label }) => {
-  const [checked, togglePlugin] = useAgentStore((s) => [
-    agentSelectors.currentAgentPlugins(s).includes(identifier),
-    s.togglePlugin,
-  ]);
+import type { CheckboxItemProps } from '../components/CheckboxWithLoading';
+import CheckboxItem from '../components/CheckboxWithLoading';
 
-  const isCustom = useToolStore((s) => customPluginSelectors.isCustomPlugin(identifier)(s));
-
+const ToolItem = memo<CheckboxItemProps>(({ id, onUpdate, label, checked, disabled }) => {
   return (
-    <Flexbox
-      gap={40}
-      horizontal
-      justify={'space-between'}
-      onClick={(e) => {
-        e.stopPropagation();
-        togglePlugin(identifier);
-      }}
-      padding={'8px 12px'}
-    >
-      <Flexbox align={'center'} gap={8} horizontal>
-        {label}
-        {isCustom && <PluginTag showText={false} type={'customPlugin'} />}
-      </Flexbox>
-      <Checkbox
+    <Suspense fallback={<DebugNode trace="ActionBar/Tools/ToolItem" />}>
+      <CheckboxItem
         checked={checked}
-        onClick={(e) => {
-          e.stopPropagation();
-          togglePlugin(identifier);
-        }}
+        disabled={disabled}
+        hasPadding={false}
+        id={id}
+        label={
+          <Flexbox allowShrink horizontal align={'center'} gap={8}>
+            <Text
+              style={{ lineHeight: 1.4, paddingBlock: 1 }}
+              ellipsis={{
+                tooltipWhenOverflow: true,
+              }}
+            >
+              {label || id}
+            </Text>
+          </Flexbox>
+        }
+        onUpdate={onUpdate}
       />
-    </Flexbox>
+    </Suspense>
   );
 });
 

@@ -1,7 +1,11 @@
 import { lambdaClient } from '@/libs/trpc/client';
-import { SemanticSearchSchemaType } from '@/types/rag';
+import { type SemanticSearchSchemaType } from '@/types/rag';
 
 class RAGService {
+  parseFileContent = async (id: string, skipExist?: boolean) => {
+    return lambdaClient.document.parseFileContent.mutate({ id, skipExist });
+  };
+
   createParseFileTask = async (id: string, skipExist?: boolean) => {
     return lambdaClient.chunk.createParseFileTask.mutate({ id, skipExist });
   };
@@ -18,8 +22,12 @@ class RAGService {
     return lambdaClient.chunk.semanticSearch.mutate({ fileIds, query });
   };
 
-  semanticSearchForChat = async (params: SemanticSearchSchemaType) => {
-    return lambdaClient.chunk.semanticSearchForChat.mutate(params);
+  semanticSearchForChat = async (params: SemanticSearchSchemaType, signal?: AbortSignal) => {
+    return lambdaClient.chunk.semanticSearchForChat.mutate(params, { signal });
+  };
+
+  getFileContents = async (fileIds: string[], signal?: AbortSignal) => {
+    return lambdaClient.chunk.getFileContents.mutate({ fileIds }, { signal });
   };
 
   deleteMessageRagQuery = async (id: string) => {

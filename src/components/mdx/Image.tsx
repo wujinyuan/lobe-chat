@@ -1,9 +1,8 @@
 'use server';
 
 import { Image } from '@lobehub/ui/mdx';
-import Img from 'next/image';
 import { getPlaiceholder } from 'plaiceholder';
-import { FC } from 'react';
+import { type FC } from 'react';
 
 const DEFAULT_WIDTH = 800;
 
@@ -28,18 +27,15 @@ const ImageWrapper: FC<{ alt: string; src: string }> = async ({ alt, src, ...res
       <Image
         alt={alt}
         height={height}
-        // @ts-ignore
-        placeholder={
-          <Img
-            alt={alt}
-            height={height}
-            src={base64}
-            style={{ filter: 'blur(24px)', scale: 1.2 }}
-            width={DEFAULT_WIDTH}
-          />
-        }
         src={src}
         width={DEFAULT_WIDTH}
+        styles={{
+          wrapper: {
+            backgroundImage: `url(${base64})`,
+            backgroundPosition: 'center',
+            backgroundSize: 'cover',
+          },
+        }}
       />
     );
   } catch {

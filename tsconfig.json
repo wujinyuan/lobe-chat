@@ -2,7 +2,7 @@
   "$schema": "https://json.schemastore.org/tsconfig",
   "compilerOptions": {
     "target": "ESNext",
-    "lib": ["dom", "dom.iterable", "esnext", "webworker"],
+    "lib": ["dom", "dom.iterable", "dom.asynciterable", "esnext", "webworker"],
     "allowJs": true,
     "skipLibCheck": true,
     "strict": true,
@@ -13,12 +13,22 @@
     "moduleResolution": "bundler",
     "resolveJsonModule": true,
     "isolatedModules": true,
-    "jsx": "preserve",
+    "jsx": "react-jsx",
     "incremental": true,
-    "baseUrl": ".",
-    "types": ["vitest/globals", "@serwist/next/typings"],
+    "types": ["vitest/globals"],
     "paths": {
+      "@/database/*": ["./packages/database/src/*"],
+      "@/const/*": ["./packages/const/src/*", "./src/const/*"],
+      "@/utils/*": ["./packages/utils/src/*", "./src/utils/*"],
+      "@/types/*": ["./packages/types/src/*", "./src/types/*"],
+      "@/envs/*": ["./packages/env/src/*", "./src/envs/*"],
+      "@/libs/trpc/*": ["./packages/trpc/src/*", "./src/libs/trpc/*"],
+      "@/config/*": ["./packages/app-config/src/*", "./src/config/*"],
+      "@/locales/*": ["./packages/locales/src/*", "./src/locales/*"],
+      "@/business/server/*": ["./packages/business-server/src/*", "./src/business/server/*"],
+      "@/server/*": ["./apps/server/src/*"],
       "@/*": ["./src/*"],
+      "~base-ui-stubs": ["./tests/mocks/baseUiStubs.tsx"],
       "~test-utils": ["./tests/utils.tsx"]
     },
     "plugins": [
@@ -27,20 +37,41 @@
       }
     ]
   },
-  "exclude": ["node_modules", "public/sw.js"],
-  "include": [
-    "next-env.d.ts",
-    "vitest.config.ts",
-    "src",
-    "tests",
-    "**/*.ts",
-    "**/*.d.ts",
-    "**/*.tsx",
-    ".next/types/**/*.ts"
+  "exclude": [
+    "node_modules",
+    "apps/desktop/**",
+    "apps/mobile/**",
+    "apps/share/**",
+    "apps/workbench/**",
+    "scripts/**",
+    "tmp",
+    "temp",
+    ".temp",
+    "e2e/**",
+    "knip.ts"
   ],
-  "ts-node": {
-    "compilerOptions": {
-      "module": "commonjs"
+  "include": [
+    "src/**/*.d.ts",
+    "src/**/*.ts",
+    "src/**/*.tsx",
+    "packages/**/*.d.ts",
+    "packages/**/*.ts",
+    "packages/**/*.tsx",
+    "tests/**/*.d.ts",
+    "tests/**/*.ts",
+    "tests/**/*.tsx",
+    "apps/server/**/*.ts",
+    "apps/server/**/*.tsx",
+    "*.ts",
+    "*.mts",
+    "*.cts",
+    ".next/types/**/*.ts",
+    "next-env.d.ts",
+    ".next/dev/types/**/*.ts"
+  ],
+  "references": [
+    {
+      "path": "./apps/desktop"
     }
-  }
+  ]
 }

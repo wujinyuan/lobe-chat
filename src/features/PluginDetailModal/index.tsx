@@ -1,8 +1,7 @@
-import { Modal, TabsNav } from '@lobehub/ui';
-import { Divider, TabsProps } from 'antd';
+import { createModal, Tabs, type TabsItem } from '@lobehub/ui/base-ui';
+import { t as i18nT } from 'i18next';
 import { memo } from 'react';
 import { useTranslation } from 'react-i18next';
-import { Center } from 'react-layout-kit';
 import useMergeState from 'use-merge-value';
 
 import PluginSettingsConfig from '@/features/PluginSettings';
@@ -11,65 +10,68 @@ import { pluginHelpers } from '@/store/tool';
 import APIs from './APIs';
 import Meta from './Meta';
 
-interface PluginDetailModalProps {
+export interface PluginDetailModalProps {
   id: string;
-  onClose: () => void;
   onTabChange?: (key: string) => void;
-  open?: boolean;
   schema: any;
   tab?: string;
 }
 
-const PluginDetailModal = memo<PluginDetailModalProps>(
-  ({ schema, onClose, id, onTabChange, open, tab }) => {
-    const [tabKey, setTabKey] = useMergeState('info', {
-      onChange: onTabChange,
-      value: tab,
-    });
-    const { t } = useTranslation('plugin');
+enum Tab {
+  Info = 'info',
+  Settings = 'settings',
+}
 
-    const hasSettings = pluginHelpers.isSettingSchemaNonEmpty(schema);
+const PluginDetailModal = memo<PluginDetailModalProps>(({ schema, id, onTabChange, tab }) => {
+  const [tabKey, setTabKey] = useMergeState(Tab.Info, {
+    onChange: onTabChange,
+    value: tab,
+  });
+  const { t } = useTranslation('plugin');
 
-    return (
-      <Modal
-        allowFullscreen
-        onCancel={onClose}
-        onOk={() => {
-          onClose();
+  const hasSettings = pluginHelpers.isSettingSchemaNonEmpty(schema);
+
+  return (
+    <>
+      <Meta id={id} />
+      <Tabs
+        activeKey={tabKey}
+        items={
+          [
+            {
+              key: Tab.Info,
+              label: t('detailModal.tabs.info'),
+            },
+            hasSettings && {
+              key: Tab.Settings,
+              label: t('detailModal.tabs.settings'),
+            },
+          ].filter(Boolean) as TabsItem[]
+        }
+        style={{
+          marginBlock: 16,
         }}
-        open={open}
-        title={t('detailModal.title')}
-        width={650}
-      >
-        <Center gap={8}>
-          <Meta id={id} />
-          <Divider style={{ marginBottom: 0, marginTop: 8 }} />
-          <TabsNav
-            activeKey={tabKey}
-            items={
-              [
-                {
-                  key: 'info',
-                  label: t('detailModal.tabs.info'),
-                },
-                hasSettings && {
-                  key: 'settings',
-                  label: t('detailModal.tabs.settings'),
-                },
-              ].filter(Boolean) as TabsProps['items']
-            }
-            onChange={setTabKey}
-            variant={'compact'}
-          />
-          {tabKey === 'settings' ? (
-            hasSettings && <PluginSettingsConfig id={id} schema={schema} />
-          ) : (
-            <APIs id={id} />
-          )}
-        </Center>
-      </Modal>
-    );
-  },
-);
+        styles={{
+          list: { display: 'flex', width: '100%' },
+          tab: { flex: 1 },
+        }}
+        onChange={(key) => setTabKey(key as Tab)}
+      />
+      {tabKey === 'settings' ? (
+        hasSettings && <PluginSettingsConfig id={id} schema={schema} />
+      ) : (
+        <APIs id={id} />
+      )}
+    </>
+  );
+});
 
-export default PluginDetailModal;
+PluginDetailModal.displayName = 'PluginDetailModal';
+
+export const createPluginDetailModal = (props: PluginDetailModalProps) =>
+  createModal({
+    content: <PluginDetailModal {...props} />,
+    footer: null,
+    title: i18nT('dev.title.skillDetails', { ns: 'plugin' }),
+    width: 800,
+  });

@@ -1,63 +1,112 @@
-import { StateCreator } from 'zustand/vanilla';
+import { type SSOProvider } from '@lobechat/types';
 
-import { enableAuth, enableClerk, enableNextAuth } from '@/const/auth';
+import { clearActiveScopeKey } from '@/libs/swr/useCacheScope';
+import { type StoreSetter } from '@/store/types';
 
-import { UserStore } from '../../store';
+import { type UserStore } from '../../store';
 
-export interface UserAuthAction {
-  enableAuth: () => boolean;
-  /**
-   * universal logout method
-   */
-  logout: () => Promise<void>;
-  /**
-   * universal login method
-   */
-  openLogin: () => Promise<void>;
+interface AuthProvidersData {
+  hasPasswordAccount: boolean;
+  providers: SSOProvider[];
 }
 
-export const createAuthSlice: StateCreator<
-  UserStore,
-  [['zustand/devtools', never]],
-  [],
-  UserAuthAction
-> = (set, get) => ({
-  enableAuth: () => {
-    return enableAuth;
-  },
-  logout: async () => {
-    if (enableClerk) {
-      get().clerkSignOut?.({ redirectUrl: location.toString() });
+const fetchAuthProvidersData = async (): Promise<AuthProvidersData> => {
+  const { accountInfo, listAccounts } = await import('@/libs/better-auth/auth-client');
+  const result = await listAccounts();
+  const accounts = result.data || [];
+  const hasPasswordAccount = accounts.some((account) => account.providerId === 'credential');
+  const providers = await Promise.all(
+    accounts
+      .filter((account) => account.providerId !== 'credential')
+      .map(async (account) => {
+        // In theory, the id_token could be decrypted from the accounts table, but I found that better-auth on GitHub does not save the id_token
+        const info = await accountInfo({
+          query: { accountId: account.accountId },
+        });
+        return {
+          email: info.data?.user?.email ?? undefined,
+          provider: account.providerId,
+          providerAccountId: account.accountId,
+        };
+      }),
+  );
+  return { hasPasswordAccount, providers };
+};
 
+type Setter = StoreSetter<UserStore>;
+export const createAuthSlice = (set: Setter, get: () => UserStore, _api?: unknown) =>
+  new UserAuthActionImpl(set, get, _api);
+
+export class UserAuthActionImpl {
+  readonly #get: () => UserStore;
+  readonly #set: Setter;
+
+  constructor(set: Setter, get: () => UserStore, _api?: unknown) {
+    void _api;
+    this.#set = set;
+    this.#get = get;
+  }
+
+  fetchAuthProviders = async (): Promise<void> => {
+    // Skip if already loaded
+    if (this.#get().isLoadedAuthProviders) return;
+
+    try {
+      const { hasPasswordAccount, providers } = await fetchAuthProvidersData();
+      this.#set({ authProviders: providers, hasPasswordAccount, isLoadedAuthProviders: true });
+    } catch (error) {
+      console.error('Failed to fetch auth providers:', error);
+      this.#set({ isLoadedAuthProviders: true });
+    }
+  };
+
+  logout = async (options?: { redirectTo?: string }): Promise<void> => {
+    // Clear the OIDC Provider session for the current browser *before*
+    // destroying the better-auth session. This prevents a stale OIDC session
+    // from silently issuing tokens for the old account after the user signs
+    // in as someone else.
+    try {
+      await fetch('/oidc/clear-session', { method: 'POST' });
+    } catch {
+      // Best-effort: don't block sign-out if the cleanup request fails
+    }
+
+    const { signOut } = await import('@/libs/better-auth/auth-client');
+    await signOut({
+      fetchOptions: {
+        onSuccess: () => {
+          // Drop the persisted active scope so the next boot doesn't hydrate the
+          // signed-out user's cache (localStorage survives the reload below).
+          clearActiveScopeKey();
+          // Use window.location.href to trigger a full page reload
+          // This ensures all client-side state (React, Zustand, cache) is cleared
+          window.location.href = options?.redirectTo || '/signin';
+        },
+      },
+    });
+  };
+
+  openLogin = async (reason?: 'sessionExpired'): Promise<void> => {
+    // Skip if already on a login page (/signin, /signup)
+    const pathname = location.pathname;
+    if (pathname.startsWith('/signin') || pathname.startsWith('/signup')) {
       return;
     }
 
-    if (enableNextAuth) {
-      const { signOut } = await import('next-auth/react');
-      signOut();
-    }
-  },
-  openLogin: async () => {
-    if (enableClerk) {
-      const reditectUrl = location.toString();
-      get().clerkSignIn?.({
-        fallbackRedirectUrl: reditectUrl,
-        signUpForceRedirectUrl: reditectUrl,
-        signUpUrl: '/signup',
-      });
+    const currentUrl = location.toString();
+    const params = new URLSearchParams({ callbackUrl: currentUrl });
+    if (reason) params.set('reason', reason);
+    window.location.href = `/signin?${params.toString()}`;
+  };
 
-      return;
+  refreshAuthProviders = async (): Promise<void> => {
+    try {
+      const { hasPasswordAccount, providers } = await fetchAuthProvidersData();
+      this.#set({ authProviders: providers, hasPasswordAccount });
+    } catch (error) {
+      console.error('Failed to refresh auth providers:', error);
     }
+  };
+}
 
-    if (enableNextAuth) {
-      const { signIn } = await import('next-auth/react');
-      // Check if only one provider is available
-      const providers = get()?.oAuthSSOProviders;
-      if (providers && providers.length === 1) {
-        signIn(providers[0]);
-        return;
-      }
-      signIn();
-    }
-  },
-});
+export type UserAuthAction = Pick<UserAuthActionImpl, keyof UserAuthActionImpl>;

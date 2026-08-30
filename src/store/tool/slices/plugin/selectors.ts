@@ -1,24 +1,22 @@
-import { LobeChatPluginManifest } from '@lobehub/chat-plugin-sdk';
-import { uniq } from 'lodash-es';
+import { type ToolManifest } from '@lobechat/types';
 
-import { InstallPluginMeta, LobeToolCustomPlugin } from '@/types/tool/plugin';
+import { isInstalledPluginAvailableInCurrentEnv } from '@/helpers/toolAvailability';
+import { type InstallPluginMeta, type LobeToolCustomPlugin } from '@/types/tool/plugin';
 
-import type { ToolStoreState } from '../../initialState';
+import { type ToolStoreState } from '../../initialState';
 
 const installedPlugins = (s: ToolStoreState) => s.installedPlugins;
 
 const isPluginInstalled = (id: string) => (s: ToolStoreState) =>
   installedPlugins(s).some((i) => i.identifier === id);
 
-const getInstalledPluginById = (id: string) => (s: ToolStoreState) =>
-  installedPlugins(s).find((p) => p.identifier === id);
+const getInstalledPluginById = (id?: string) => (s: ToolStoreState) => {
+  if (!id) return;
+
+  return installedPlugins(s).find((p) => p.identifier === id);
+};
 
 const getPluginMetaById = (id: string) => (s: ToolStoreState) => {
-  // first try to find meta from store
-  const storeMeta = s.pluginStoreList.find((i) => i.identifier === id)?.meta;
-  if (storeMeta) return storeMeta;
-
-  // then use installed meta
   return getInstalledPluginById(id)(s)?.manifest?.meta;
 };
 
@@ -34,27 +32,31 @@ const getPluginSettingsById = (id: string) => (s: ToolStoreState) =>
   getInstalledPluginById(id)(s)?.settings || {};
 
 const storeAndInstallPluginsIdList = (s: ToolStoreState) =>
-  uniq(
-    [
-      s.installedPlugins.map((i) => i.identifier),
-      s.pluginStoreList.map((i) => i.identifier),
-    ].flat(),
-  );
+  s.installedPlugins.map((i) => i.identifier);
 
 const installedPluginManifestList = (s: ToolStoreState) =>
   installedPlugins(s)
-    .map((i) => i.manifest as LobeChatPluginManifest)
+    .map((i) => i.manifest as ToolManifest)
     .filter((i) => !!i);
 
 const installedPluginMetaList = (s: ToolStoreState) =>
-  installedPlugins(s).map<InstallPluginMeta>((p) => ({
-    author: p.manifest?.author,
-    createdAt: p.manifest?.createdAt || (p.manifest as any)?.createAt,
-    homepage: p.manifest?.homepage,
-    identifier: p.identifier,
-    meta: getPluginMetaById(p.identifier)(s),
-    type: p.type,
-  }));
+  installedPlugins(s)
+    // Filter out Composio plugins (they have their own display location)
+    .filter((p) => !p.customParams?.composio)
+    .filter((plugin) => isInstalledPluginAvailableInCurrentEnv(plugin))
+    .map<InstallPluginMeta>((p) => ({
+      author: p.manifest?.author,
+      createdAt: p.manifest?.createdAt || (p.manifest as any)?.createAt,
+      homepage: p.manifest?.homepage,
+      identifier: p.identifier,
+      /*
+       * should remove meta
+       */
+      meta: getPluginMetaById(p.identifier)(s),
+      runtimeType: p.runtimeType,
+      type: p.source || p.type,
+      ...getPluginMetaById(p.identifier)(s),
+    }));
 const installedCustomPluginMetaList = (s: ToolStoreState) =>
   installedPluginMetaList(s).filter((p) => p.type === 'customPlugin');
 

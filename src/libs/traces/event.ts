@@ -1,17 +1,17 @@
+import { TraceEventType } from '@lobechat/types';
 import { diffChars } from 'diff';
-import { LangfuseTraceClient } from 'langfuse-core';
+import { type LangfuseTraceClient } from 'langfuse-core';
 
-import { TraceEventType } from '@/const/trace';
 import {
-  TraceEventBasePayload,
-  TraceEventCopyMessage,
-  TraceEventDeleteAndRegenerateMessage,
-  TraceEventModifyMessage,
-  TraceEventRegenerateMessage,
+  type TraceEventBasePayload,
+  type TraceEventCopyMessage,
+  type TraceEventDeleteAndRegenerateMessage,
+  type TraceEventModifyMessage,
+  type TraceEventRegenerateMessage,
 } from '@/types/trace';
 
 /**
- * trace 事件得分
+ * Trace event scores
  */
 export enum EventScore {
   DeleteAndRegenerate = -1,

@@ -1,11 +1,20 @@
 'use client';
 
-import { Icon } from '@lobehub/ui';
-import { Button, Result, Table } from 'antd';
+import { Flexbox, Icon } from '@lobehub/ui';
+import { Button } from '@lobehub/ui/base-ui';
+import { Result, Table } from 'antd';
+import { createStaticStyles } from 'antd-style';
 import { CheckCircle } from 'lucide-react';
 import React, { memo } from 'react';
 import { useTranslation } from 'react-i18next';
-import { Flexbox } from 'react-layout-kit';
+
+const styles = createStaticStyles(({ css, cssVar }) => {
+  return {
+    zeroCell: css`
+      color: ${cssVar.colorTextQuaternary};
+    `,
+  };
+});
 
 interface SuccessResultProps {
   dataSource?: {
@@ -13,6 +22,7 @@ interface SuccessResultProps {
     error: number;
     skips: number;
     title: string;
+    updated: number;
   }[];
   duration: number;
   onClickFinish?: () => void;
@@ -21,39 +31,44 @@ interface SuccessResultProps {
 const SuccessResult = memo<SuccessResultProps>(({ duration, dataSource, onClickFinish }) => {
   const { t } = useTranslation('common');
 
+  const cellRender = (text: string) => {
+    return text ? text : <span className={styles.zeroCell}>0</span>;
+  };
   return (
     <Result
+      icon={<Icon icon={CheckCircle} />}
+      status={'success'}
+      style={{ paddingBlock: 24, paddingInline: 0 }}
+      title={t('importModal.finish.title')}
       extra={
-        <Button onClick={onClickFinish} size={'large'} type={'primary'}>
+        <Button size={'large'} type={'primary'} onClick={onClickFinish}>
           {t('importModal.finish.start')}
         </Button>
       }
-      icon={<Icon icon={CheckCircle} />}
-      status={'success'}
-      style={{ paddingBlock: 24 }}
       subTitle={
         // if there is no importData, means it's only import the settings
         !dataSource ? (
           t('importModal.finish.onlySettings')
         ) : (
-          <Flexbox gap={16} width={400}>
+          <Flexbox gap={16} width={500}>
             {t('importModal.finish.subTitle', { duration: (duration / 1000).toFixed(2) })}
             <Table
               bordered
-              columns={[
-                { dataIndex: 'title', title: t('importModal.result.type') },
-                { dataIndex: 'added', title: t('importModal.result.added') },
-                { dataIndex: 'skips', title: t('importModal.result.skips') },
-                { dataIndex: 'error', title: t('importModal.result.errors') },
-              ]}
               dataSource={dataSource}
               pagination={false}
+              rowKey={'title'}
               size={'small'}
+              columns={[
+                { dataIndex: 'title', render: cellRender, title: t('importModal.result.type') },
+                { dataIndex: 'added', render: cellRender, title: t('importModal.result.added') },
+                { dataIndex: 'skips', render: cellRender, title: t('importModal.result.skips') },
+                { dataIndex: 'error', render: cellRender, title: t('importModal.result.errors') },
+                { dataIndex: 'updated', render: cellRender, title: t('importModal.result.update') },
+              ]}
             />
           </Flexbox>
         )
       }
-      title={t('importModal.finish.title')}
     />
   );
 });

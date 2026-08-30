@@ -1,53 +1,143 @@
-import { AuthObject } from '@clerk/backend';
-import { getAuth } from '@clerk/nextjs/server';
-import { NextRequest } from 'next/server';
+import type { ChatCompletionErrorPayload } from '@lobechat/model-runtime';
+import { AgentRuntimeError } from '@lobechat/model-runtime';
+import { context as otContext } from '@lobechat/observability-otel/api';
+import type { ClientSecretPayload } from '@lobechat/types';
+import { ChatErrorType } from '@lobechat/types';
 
-import { JWTPayload, LOBE_CHAT_AUTH_HEADER, OAUTH_AUTHORIZED, enableClerk } from '@/const/auth';
-import { AgentRuntime, AgentRuntimeError, ChatCompletionErrorPayload } from '@/libs/agent-runtime';
-import { ChatErrorType } from '@/types/fetch';
+import { auth } from '@/auth';
+import { getServerDB } from '@/database/core/db-adaptor';
+import type { LobeChatDatabase } from '@/database/type';
+import { LOBE_CHAT_OIDC_AUTH_HEADER } from '@/envs/auth';
+import { extractTraceContext, injectActiveTraceHeaders } from '@/libs/observability/traceparent';
+import { assertOIDCUserActive } from '@/libs/oidc-provider/access-control';
+import { validateOIDCJWT } from '@/libs/oidc-provider/jwt';
 import { createErrorResponse } from '@/utils/errorResponse';
-import { getJWTPayload } from '@/utils/server/jwt';
 
-import { checkAuthMethod } from './utils';
-
-type CreateRuntime = (jwtPayload: JWTPayload) => AgentRuntime;
-type RequestOptions = { createRuntime?: CreateRuntime; params: Promise<{ provider: string }> };
+type RequestOptions = { params: Promise<{ provider?: string }> };
 
 export type RequestHandler = (
   req: Request,
   options: RequestOptions & {
-    createRuntime?: CreateRuntime;
-    jwtPayload: JWTPayload;
+    jwtPayload: ClientSecretPayload;
+    serverDB: LobeChatDatabase;
+    userId: string;
   },
 ) => Promise<Response>;
 
+interface OIDCClientDebugInfo {
+  clientId?: string;
+  payload?: Record<string, unknown>;
+}
+
+const isUnauthorizedAuthError = (error: unknown) => {
+  return !!error && typeof error === 'object' && 'code' in error && error.code === 'UNAUTHORIZED';
+};
+
+/**
+ * Decode JWT payload for debugging only.
+ * The decoded payload must never be trusted for authorization decisions.
+ */
+const getOIDCClientDebugInfo = (token?: string | null): OIDCClientDebugInfo => {
+  if (!token) return {};
+
+  const [, payload] = token.split('.');
+  if (!payload) return {};
+
+  try {
+    const normalizedPayload = payload.replaceAll('-', '+').replaceAll('_', '/');
+    const decodedPayload = JSON.parse(Buffer.from(normalizedPayload, 'base64').toString('utf8')) as
+      | Record<string, unknown>
+      | undefined;
+
+    const clientId =
+      typeof decodedPayload?.client_id === 'string' ? decodedPayload.client_id : undefined;
+
+    return { clientId, payload: decodedPayload };
+  } catch {
+    return {};
+  }
+};
+
 export const checkAuth =
   (handler: RequestHandler) => async (req: Request, options: RequestOptions) => {
-    let jwtPayload: JWTPayload;
+    // Clone the request to avoid "Response body object should not be disturbed or locked" error
+    // in Next.js 16 when the body stream has been consumed by Next.js internal mechanisms
+    // This ensures the handler can safely read the request body
+    const clonedReq = req.clone();
+
+    // Get serverDB for database access
+    const serverDB = await getServerDB();
+
+    // we have a special header to debug the api endpoint in development mode
+    const isDebugApi = req.headers.get('lobe-auth-dev-backend-api') === '1';
+    const isMockUser = process.env.ENABLE_MOCK_DEV_USER === '1';
+    if (process.env.NODE_ENV === 'development' && (isDebugApi || isMockUser)) {
+      const mockUserId = process.env.MOCK_DEV_USER_ID || 'DEV_USER';
+      return handler(clonedReq, {
+        ...options,
+        jwtPayload: { userId: mockUserId },
+        serverDB,
+        userId: mockUserId,
+      });
+    }
+
+    let userId: string;
 
     try {
-      // get Authorization from header
-      const authorization = req.headers.get(LOBE_CHAT_AUTH_HEADER);
-      const oauthAuthorized = !!req.headers.get(OAUTH_AUTHORIZED);
+      // OIDC authentication (CLI)
+      const oidcAuthorization = req.headers.get(LOBE_CHAT_OIDC_AUTH_HEADER);
+      if (oidcAuthorization) {
+        const oidc = await validateOIDCJWT(oidcAuthorization);
+        userId = oidc.userId;
+        await assertOIDCUserActive(serverDB, userId);
+      } else {
+        // Better Auth session authentication (web)
+        const session = await auth.api.getSession({
+          headers: req.headers,
+        });
 
-      if (!authorization) throw AgentRuntimeError.createError(ChatErrorType.Unauthorized);
+        if (!session?.user?.id) {
+          throw AgentRuntimeError.createError(ChatErrorType.Unauthorized);
+        }
 
-      // check the Auth With payload and clerk auth
-      let clerkAuth = {} as AuthObject;
+        userId = session.user.id;
+      }
+    } catch (e) {
+      const params = await options.params;
+      const oidcAuthorization = req.headers.get(LOBE_CHAT_OIDC_AUTH_HEADER);
 
-      if (enableClerk) {
-        clerkAuth = getAuth(req as NextRequest);
+      // Only log OIDC auth failures — better-auth session failures are a common
+      // baseline (unauthenticated browser hits) and would otherwise flood logs.
+      if (oidcAuthorization) {
+        const oidcDebugInfo = getOIDCClientDebugInfo(oidcAuthorization);
+
+        console.info('[auth] OIDC authentication failed', {
+          clientId: oidcDebugInfo.clientId,
+          code: (e as { code?: string })?.code,
+          path: new URL(req.url).pathname,
+          provider: params?.provider,
+          userAgent: req.headers.get('user-agent'),
+          xClientType: req.headers.get('x-client-type'),
+        });
       }
 
-      jwtPayload = await getJWTPayload(authorization);
+      // if the error is not a ChatCompletionErrorPayload, it means the application error
+      if (!(e as ChatCompletionErrorPayload).errorType) {
+        if (isUnauthorizedAuthError(e)) {
+          return createErrorResponse(ChatErrorType.Unauthorized, {
+            error: e,
+            provider: params?.provider,
+          });
+        }
 
-      checkAuthMethod({
-        accessCode: jwtPayload.accessCode,
-        apiKey: jwtPayload.apiKey,
-        clerkAuth,
-        nextAuthAuthorized: oauthAuthorized,
-      });
-    } catch (e) {
+        // other issue will be internal server error
+        console.error(e);
+        return createErrorResponse(ChatErrorType.InternalServerError, {
+          error: e,
+          provider: params?.provider,
+        });
+      }
+
       const {
         errorType = ChatErrorType.InternalServerError,
         error: errorContent,
@@ -56,9 +146,36 @@ export const checkAuth =
 
       const error = errorContent || e;
 
-      const params = await options.params;
       return createErrorResponse(errorType, { error, ...res, provider: params?.provider });
     }
 
-    return handler(req, { ...options, jwtPayload });
+    const jwtPayload: ClientSecretPayload = { userId };
+
+    const extractedContext = extractTraceContext(req.headers);
+
+    const res = await otContext.with(extractedContext, () =>
+      handler(clonedReq, { ...options, jwtPayload, serverDB, userId }),
+    );
+
+    // Only inject trace headers when the handler returns a Response
+    // NOTICE: this is related to src/app/(backend)/webapi/chat/[provider]/route.test.ts
+    if (!(res instanceof Response)) {
+      console.warn(
+        'Response is not an instance of Response, skipping trace header injection. Possibly bug or mocked response in tests, please check and make sure this is intended behavior.',
+      );
+      return res;
+    }
+
+    try {
+      const headers = new Headers(res.headers);
+      const traceparent = injectActiveTraceHeaders(headers);
+      if (!traceparent) {
+        return res;
+      }
+
+      return new Response(res.body, { headers, status: res.status, statusText: res.statusText });
+    } catch (err) {
+      console.error('Failed to inject trace headers:', err);
+      return res;
+    }
   };

@@ -1,23 +1,40 @@
 'use client';
 
-import { ReactNode, memo } from 'react';
+import { type ReactNode } from 'react';
+import { memo } from 'react';
 
-import { IFeatureFlags } from '@/config/featureFlags';
-import { GlobalServerConfig } from '@/types/serverConfig';
+import { type IFeatureFlags } from '@/config/featureFlags';
+import { mapFeatureFlagsEnvToState } from '@/config/featureFlags';
+import { type GlobalServerConfig } from '@/types/serverConfig';
 
-import { Provider, createServerConfigStore } from './store';
+import { createServerConfigStore, Provider } from './store';
 
 interface GlobalStoreProviderProps {
   children: ReactNode;
   featureFlags?: Partial<IFeatureFlags>;
   isMobile?: boolean;
+  segmentVariants?: string;
   serverConfig?: GlobalServerConfig;
 }
 
 export const ServerConfigStoreProvider = memo<GlobalStoreProviderProps>(
-  ({ children, featureFlags, serverConfig, isMobile }) => (
-    <Provider createStore={() => createServerConfigStore({ featureFlags, isMobile, serverConfig })}>
-      {children}
-    </Provider>
-  ),
+  ({ children, featureFlags, serverConfig, isMobile, segmentVariants }) => {
+    const mappedFeatureFlags = featureFlags ? mapFeatureFlagsEnvToState(featureFlags) : undefined;
+
+    return (
+      <Provider
+        createStore={() =>
+          createServerConfigStore({
+            canAccessDevDock: mappedFeatureFlags?.enableDevDock === true,
+            featureFlags: mappedFeatureFlags,
+            isMobile,
+            segmentVariants,
+            serverConfig,
+          })
+        }
+      >
+        {children}
+      </Provider>
+    );
+  },
 );

@@ -1,76 +1,117 @@
 'use client';
 
-import { ConfigProvider, Modal, type ModalProps } from 'antd';
-import { createStyles } from 'antd-style';
-import { lighten } from 'polished';
-import { ReactNode, memo } from 'react';
-import { Flexbox } from 'react-layout-kit';
+import { Flexbox } from '@lobehub/ui';
+import { Button, createModal, type ModalInstance, useModalContext } from '@lobehub/ui/base-ui';
+import { createStaticStyles } from 'antd-style';
+import { type ReactNode } from 'react';
+import { memo } from 'react';
 
-const useStyles = createStyles(({ css, token, prefixCls }) => {
-  return {
-    content: css`
-      .${prefixCls}-modal-footer {
-        margin: 0;
-        padding: 16px;
-      }
-      .${prefixCls}-modal-header {
-        display: flex;
-        gap: 4px;
-        align-items: center;
-        justify-content: center;
+const styles = createStaticStyles(({ css }) => ({
+  body: css`
+    h3 {
+      margin: 0;
+      font-weight: bold;
+    }
 
-        height: 56px;
-        margin-block-end: 0;
-        padding: 16px;
-      }
-      .${prefixCls}-modal-content {
-        overflow: hidden;
-        padding: 0;
-        border: 1px solid ${token.colorSplit};
-        border-radius: ${token.borderRadiusLG}px;
-      }
-    `,
-    wrap: css`
-      overflow: hidden auto;
-    `,
-  };
-});
+    p {
+      margin: 0;
+    }
+  `,
+}));
 
-interface GuideModalProps extends ModalProps {
+interface GuideModalContentProps {
+  cancelText?: ReactNode;
   cover: ReactNode;
   desc: ReactNode;
+  okText?: ReactNode;
+  onCancel?: () => void;
+  onOk?: () => void;
   title: ReactNode;
 }
 
-const GuideModal = memo<GuideModalProps>(
-  ({ className, title, desc, cover, width = 360, ...rest }) => {
-    const { styles, cx, theme } = useStyles();
+const GuideModalContent = memo<GuideModalContentProps>(
+  ({ cover, title, desc, okText, cancelText, onOk, onCancel }) => {
+    const { close } = useModalContext();
+
+    const handleOk = () => {
+      onOk?.();
+      close();
+    };
+
+    const handleCancel = () => {
+      onCancel?.();
+      close();
+    };
+
     return (
-      <ConfigProvider
-        theme={{
-          token: {
-            colorBgElevated: lighten(0.005, theme.colorBgContainer),
-          },
-        }}
-      >
-        <Modal
-          centered
-          className={cx(styles.content, className)}
-          closable={false}
-          maskClosable
-          width={width}
-          wrapClassName={styles.wrap}
-          {...rest}
-        >
-          {cover}
-          <Flexbox padding={16}>
-            <h3 style={{ fontWeight: 'bold' }}>{title}</h3>
-            <p style={{ marginBottom: 0 }}>{desc}</p>
+      <Flexbox className={styles.body}>
+        {cover}
+        <Flexbox gap={4} padding={16}>
+          <h3>{title}</h3>
+          <p>{desc}</p>
+        </Flexbox>
+        {(okText || cancelText) && (
+          <Flexbox
+            horizontal
+            gap={8}
+            justify={'flex-end'}
+            paddingBlock={16}
+            paddingInline={16}
+            style={{ paddingTop: 0 }}
+          >
+            {cancelText ? <Button onClick={handleCancel}>{cancelText}</Button> : null}
+            {okText ? (
+              <Button type={'primary'} onClick={handleOk}>
+                {okText}
+              </Button>
+            ) : null}
           </Flexbox>
-        </Modal>
-      </ConfigProvider>
+        )}
+      </Flexbox>
     );
   },
 );
 
-export default GuideModal;
+GuideModalContent.displayName = 'GuideModalContent';
+
+export interface CreateGuideModalOptions {
+  cancelText?: ReactNode;
+  cover: ReactNode;
+  desc: ReactNode;
+  okText?: ReactNode;
+  onCancel?: () => void;
+  onOk?: () => void;
+  title: ReactNode;
+  width?: number;
+}
+
+export const createGuideModal = ({
+  cancelText,
+  cover,
+  desc,
+  okText,
+  onCancel,
+  onOk,
+  title,
+  width = 360,
+}: CreateGuideModalOptions): ModalInstance =>
+  createModal({
+    content: (
+      <GuideModalContent
+        cancelText={cancelText}
+        cover={cover}
+        desc={desc}
+        okText={okText}
+        title={title}
+        onCancel={onCancel}
+        onOk={onOk}
+      />
+    ),
+    footer: null,
+    maskClosable: true,
+    styles: {
+      content: { padding: 0 },
+      header: { display: 'none' },
+    },
+    width,
+  });

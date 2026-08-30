@@ -1,30 +1,31 @@
 'use client';
 
-import {
-  ConfigProvider,
-  FontLoader,
-  NeutralColors,
-  PrimaryColors,
-  ThemeProvider,
-} from '@lobehub/ui';
-import { ThemeAppearance, createStyles } from 'antd-style';
 import 'antd/dist/reset.css';
-import Image from 'next/image';
-import Link from 'next/link';
-import { ReactNode, memo, useEffect } from 'react';
+
+import { type NeutralColors, type PrimaryColors } from '@lobehub/ui';
+import { ConfigProvider, FontLoader, ThemeProvider } from '@lobehub/ui';
+import { createStaticStyles, cx } from 'antd-style';
+import * as m from 'motion/react-m';
+import { type ReactNode } from 'react';
+import { memo, useEffect, useMemo, useState } from 'react';
 
 import AntdStaticMethods from '@/components/AntdStaticMethods';
-import {
-  LOBE_THEME_APPEARANCE,
-  LOBE_THEME_NEUTRAL_COLOR,
-  LOBE_THEME_PRIMARY_COLOR,
-} from '@/const/theme';
+import Link from '@/components/Link';
+import { genFontFamily, genFontFamilyCode } from '@/const/font';
+import { LOBE_THEME_NEUTRAL_COLOR, LOBE_THEME_PRIMARY_COLOR } from '@/const/theme';
+import { useIsDark } from '@/hooks/useIsDark';
+import { getUILocaleAndResources } from '@/libs/getUILocaleAndResources';
+import type { UILocaleResources } from '@/libs/getUILocaleAndResources.utils';
+import { resolveUILocale } from '@/libs/getUILocaleAndResources.utils';
+import Image from '@/libs/next/Image';
+import { useGlobalStore } from '@/store/global';
+import { systemStatusSelectors } from '@/store/global/selectors';
 import { useUserStore } from '@/store/user';
-import { userGeneralSettingsSelectors } from '@/store/user/selectors';
+import { preferenceSelectors, userGeneralSettingsSelectors } from '@/store/user/selectors';
 import { GlobalStyle } from '@/styles';
 import { setCookie } from '@/utils/client/cookie';
 
-const useStyles = createStyles(({ css, token }) => ({
+const styles = createStaticStyles(({ css, cssVar }) => ({
   app: css`
     position: relative;
 
@@ -37,14 +38,14 @@ const useStyles = createStyles(({ css, token }) => ({
     min-height: 100dvh;
     max-height: 100dvh;
 
-    @media (min-device-width: 576px) {
+    @media (device-width >= 576px) {
       overflow: hidden;
     }
   `,
   // scrollbar-width and scrollbar-color are supported from Chrome 121
   // https://developer.mozilla.org/en-US/docs/Web/CSS/scrollbar-color
   scrollbar: css`
-    scrollbar-color: ${token.colorFill} transparent;
+    scrollbar-color: ${cssVar.colorFill} transparent;
     scrollbar-width: thin;
 
     #lobe-mobile-scroll-container {
@@ -70,7 +71,7 @@ const useStyles = createStyles(({ css, token }) => ({
 
     :hover::-webkit-scrollbar-thumb {
       border: 3px solid transparent;
-      background-color: ${token.colorText};
+      background-color: ${cssVar.colorText};
       background-clip: content-box;
     }
 
@@ -84,7 +85,6 @@ export interface AppThemeProps {
   children?: ReactNode;
   customFontFamily?: string;
   customFontURL?: string;
-  defaultAppearance?: ThemeAppearance;
   defaultNeutralColor?: NeutralColors;
   defaultPrimaryColor?: PrimaryColors;
   globalCDN?: boolean;
@@ -93,22 +93,61 @@ export interface AppThemeProps {
 const AppTheme = memo<AppThemeProps>(
   ({
     children,
-    defaultAppearance,
     defaultPrimaryColor,
     defaultNeutralColor,
     globalCDN,
     customFontURL,
     customFontFamily,
   }) => {
-    // console.debug('server:appearance', defaultAppearance);
-    // console.debug('server:primaryColor', defaultPrimaryColor);
-    // console.debug('server:neutralColor', defaultNeutralColor);
-    const themeMode = useUserStore(userGeneralSettingsSelectors.currentThemeMode);
-    const { styles, cx, theme } = useStyles();
-    const [primaryColor, neutralColor] = useUserStore((s) => [
+    const language = useGlobalStore(systemStatusSelectors.language);
+    const isDark = useIsDark();
+
+    const [primaryColor, neutralColor, animationMode] = useUserStore((s) => [
       userGeneralSettingsSelectors.primaryColor(s),
       userGeneralSettingsSelectors.neutralColor(s),
+      userGeneralSettingsSelectors.animationMode(s),
     ]);
+    const [userFontFamily, userFontFamilyCode] = useUserStore((s) => [
+      preferenceSelectors.fontFamily(s),
+      preferenceSelectors.terminalFontFamily(s),
+    ]);
+    const fontFamily = useMemo(
+      () =>
+        genFontFamily({
+          customFontFamily,
+          locale: resolveUILocale(language).normalizedLocale,
+          userFontFamily,
+        }),
+      [customFontFamily, language, userFontFamily],
+    );
+    const fontFamilyCode = useMemo(
+      () =>
+        genFontFamilyCode({
+          locale: resolveUILocale(language).normalizedLocale,
+          userFontFamily: userFontFamilyCode,
+        }),
+      [language, userFontFamilyCode],
+    );
+    const [uiResources, setUIResources] = useState<UILocaleResources>();
+    const [uiLocale, setUILocale] = useState(() => resolveUILocale(language).uiLocale);
+
+    useEffect(() => {
+      let mounted = true;
+      setUILocale(resolveUILocale(language).uiLocale);
+      getUILocaleAndResources(language)
+        .then(({ locale, resources }) => {
+          if (mounted) {
+            setUILocale(locale);
+            setUIResources(resources);
+          }
+        })
+        .catch((error) => {
+          console.error('Failed to load UI locale resources:', error);
+        });
+      return () => {
+        mounted = false;
+      };
+    }, [language]);
 
     useEffect(() => {
       setCookie(LOBE_THEME_PRIMARY_COLOR, primaryColor);
@@ -118,29 +157,35 @@ const AppTheme = memo<AppThemeProps>(
       setCookie(LOBE_THEME_NEUTRAL_COLOR, neutralColor);
     }, [neutralColor]);
 
+    const currentAppearence = isDark ? 'dark' : 'light';
+
     return (
       <ThemeProvider
+        appearance={currentAppearence}
         className={cx(styles.app, styles.scrollbar, styles.scrollbarPolyfill)}
+        defaultAppearance={currentAppearence}
+        defaultThemeMode={currentAppearence}
         customTheme={{
           neutralColor: neutralColor ?? defaultNeutralColor,
           primaryColor: primaryColor ?? defaultPrimaryColor,
         }}
-        defaultAppearance={defaultAppearance}
-        onAppearanceChange={(appearance) => {
-          setCookie(LOBE_THEME_APPEARANCE, appearance);
-        }}
         theme={{
-          cssVar: true,
+          cssVar: { key: 'lobe-vars' },
           token: {
-            fontFamily: customFontFamily ? `${customFontFamily},${theme.fontFamily}` : undefined,
+            fontFamily,
+            fontFamilyCode,
+            motion: animationMode !== 'disabled',
+            motionUnit: animationMode === 'agile' ? 0.05 : 0.1,
           },
         }}
-        themeMode={themeMode}
       >
         {!!customFontURL && <FontLoader url={customFontURL} />}
         <GlobalStyle />
         <AntdStaticMethods />
         <ConfigProvider
+          locale={uiLocale}
+          motion={m}
+          resources={uiResources}
           config={{
             aAs: Link,
             imgAs: Image,

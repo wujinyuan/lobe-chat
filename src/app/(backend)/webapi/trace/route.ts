@@ -1,8 +1,8 @@
-import { TraceEventType } from '@/const/trace';
-import { TraceClient } from '@/libs/traces';
-import { TraceEventBasePayload, TraceEventPayloads } from '@/types/trace';
+import { TraceEventType } from '@lobechat/types';
+import { after } from 'next/server';
 
-export const runtime = 'edge';
+import { TraceClient } from '@/libs/traces';
+import { type TraceEventBasePayload, type TraceEventPayloads } from '@/types/trace';
 
 export const POST = async (req: Request) => {
   type RequestData = TraceEventPayloads & TraceEventBasePayload;
@@ -35,6 +35,9 @@ export const POST = async (req: Request) => {
     }
   }
 
-  await traceClient.shutdownAsync();
+  after(async () => {
+    await traceClient.shutdownAsync();
+  });
+
   return new Response(undefined, { status: 201 });
 };

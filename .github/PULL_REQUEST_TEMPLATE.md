@@ -1,20 +1,23 @@
-#### 💻 变更类型 | Change Type
+<!-- Brief and heads-up -->
 
-<!-- For change type, change [ ] to [x]. -->
+<!-- If this PR includes UI changes, please provide screenshots or videos. -->
 
-- [ ] ✨ feat
-- [ ] 🐛 fix
-- [ ] ♻️ refactor
-- [ ] 💄 style
-- [ ] 👷 build
-- [ ] ⚡️ perf
-- [ ] 📝 docs
-- [ ] 🔨 chore
+| Before | After |
+| ------ | ----- |
+| ...    | ...   |
 
-#### 🔀 变更说明 | Description of Change
+#### Test
 
-<!-- Thank you for your Pull Request. Please provide a description above. -->
+<!-- How you tested your changes -->
 
-#### 📝 补充信息 | Additional Information
+<!-- For AI features, please include test prompts or scenarios -->
 
-<!-- Add any other context about the Pull Request here. -->
+- [ ] Tested locally
+- [ ] Added/updated tests
+- [ ] No tests needed
+
+#### 🔗 Related Issue
+
+<!-- Link to the issue that is fixed by this PR -->
+
+<!-- Example: Fixes #xxx, Closes #xxx, Related to #xxx -->

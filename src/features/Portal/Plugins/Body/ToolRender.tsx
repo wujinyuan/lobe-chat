@@ -1,15 +1,15 @@
+import { getBuiltinPortal } from '@lobechat/builtin-tools/portals';
 import isEqual from 'fast-deep-equal';
 import { memo } from 'react';
 
-import PluginRender from '@/features/PluginsUI/Render';
 import { useChatStore } from '@/store/chat';
-import { chatPortalSelectors, chatSelectors } from '@/store/chat/selectors';
-import { BuiltinToolsPortals } from '@/tools/portals';
+import { chatPortalSelectors, dbMessageSelectors } from '@/store/chat/selectors';
 import { safeParseJSON } from '@/utils/safeParseJSON';
 
 const ToolRender = memo(() => {
   const messageId = useChatStore(chatPortalSelectors.toolMessageId);
-  const message = useChatStore(chatSelectors.getMessageById(messageId || ''), isEqual);
+  const params = useChatStore(chatPortalSelectors.toolUIParams, isEqual);
+  const message = useChatStore(dbMessageSelectors.getDbMessageById(messageId || ''), isEqual);
 
   // make sure the message and id is valid
   if (!messageId || !message) return;
@@ -23,26 +23,17 @@ const ToolRender = memo(() => {
 
   if (!args) return;
 
-  const Render = BuiltinToolsPortals[plugin.identifier];
+  const Render = getBuiltinPortal(plugin.identifier);
 
-  if (!Render)
-    return (
-      <PluginRender
-        arguments={plugin.arguments}
-        content={message.content}
-        id={messageId}
-        identifier={plugin.identifier}
-        payload={plugin}
-        pluginState={pluginState}
-        type={plugin?.type}
-      />
-    );
+  if (!Render) return null;
 
   return (
     <Render
+      apiName={plugin.apiName}
       arguments={args}
       identifier={plugin.identifier}
       messageId={messageId}
+      params={params}
       state={pluginState}
     />
   );

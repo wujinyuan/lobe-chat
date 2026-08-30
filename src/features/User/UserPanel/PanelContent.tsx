@@ -1,75 +1,57 @@
-import Link from 'next/link';
-import { useRouter } from 'next/navigation';
-import { memo } from 'react';
-import { Flexbox } from 'react-layout-kit';
+import { Flexbox } from '@lobehub/ui';
+import { type FC } from 'react';
 
-import BrandWatermark from '@/components/BrandWatermark';
-import Menu from '@/components/Menu';
-import { enableAuth, enableNextAuth } from '@/const/auth';
-import { isDeprecatedEdition } from '@/const/version';
+import BusinessPanelContent from '@/business/client/features/User/BusinessPanelContent';
+import UserPanelAccountSection from '@/business/client/features/User/UserPanelAccountSection';
+import UserPanelStatistics from '@/business/client/features/User/UserPanelStatistics';
+import UserPanelWorkspaceSection from '@/business/client/features/User/UserPanelWorkspaceSection';
+import Menu, { type MenuProps } from '@/components/Menu';
+import { isDesktop } from '@/const/version';
+import UserInfo from '@/features/User/UserInfo';
+import { useSignOut } from '@/hooks/useSignOut';
+import { serverConfigSelectors, useServerConfigStore } from '@/store/serverConfig';
 import { useUserStore } from '@/store/user';
 import { authSelectors } from '@/store/user/selectors';
 
-import DataStatistics from '../DataStatistics';
-import UserInfo from '../UserInfo';
 import UserLoginOrSignup from '../UserLoginOrSignup';
-import LangButton from './LangButton';
-import ThemeButton from './ThemeButton';
 import { useMenu } from './useMenu';
 
-const PanelContent = memo<{ closePopover: () => void }>(({ closePopover }) => {
-  const router = useRouter();
+const PanelContent: FC<{ closePopover: () => void }> = ({ closePopover }) => {
   const isLoginWithAuth = useUserStore(authSelectors.isLoginWithAuth);
-  const [openSignIn, signOut] = useUserStore((s) => [s.openLogin, s.logout]);
+  const openSignIn = useUserStore((s) => s.openLogin);
+  const enableBusinessFeatures = useServerConfigStore(serverConfigSelectors.enableBusinessFeatures);
   const { mainItems, logoutItems } = useMenu();
+  const signOut = useSignOut();
 
   const handleSignIn = () => {
     openSignIn();
     closePopover();
   };
 
-  const handleSignOut = () => {
-    signOut();
+  const handleMenuClick: MenuProps['onClick'] = ({ key }) => {
     closePopover();
-    // NextAuth doesn't need to redirect to login page
-    if (enableNextAuth) return;
-    router.push('/login');
+
+    if (key === 'logout') void signOut();
   };
 
   return (
     <Flexbox gap={2} style={{ minWidth: 300 }}>
-      {!enableAuth || (enableAuth && isLoginWithAuth) ? (
+      {isDesktop || isLoginWithAuth ? (
         <>
           <UserInfo avatarProps={{ clickable: false }} />
-          {!isDeprecatedEdition && (
-            <Link href={'/profile/stats'} style={{ color: 'inherit' }}>
-              <DataStatistics />
-            </Link>
-          )}
+          <UserPanelStatistics />
+          {enableBusinessFeatures && <BusinessPanelContent />}
+          <UserPanelWorkspaceSection onSwitch={closePopover} />
         </>
       ) : (
         <UserLoginOrSignup onClick={handleSignIn} />
       )}
 
-      <Menu items={mainItems} onClick={closePopover} />
-      <Flexbox
-        align={'center'}
-        horizontal
-        justify={'space-between'}
-        style={isLoginWithAuth ? { paddingRight: 6 } : { padding: '6px 6px 6px 16px' }}
-      >
-        {isLoginWithAuth ? (
-          <Menu items={logoutItems} onClick={handleSignOut} />
-        ) : (
-          <BrandWatermark />
-        )}
-        <Flexbox align={'center'} flex={'none'} gap={6} horizontal>
-          <LangButton />
-          <ThemeButton />
-        </Flexbox>
-      </Flexbox>
+      <Menu items={[...(mainItems ?? []), ...(logoutItems ?? [])]} onClick={handleMenuClick} />
+
+      <UserPanelAccountSection onNavigate={closePopover} />
     </Flexbox>
   );
-});
+};
 
 export default PanelContent;

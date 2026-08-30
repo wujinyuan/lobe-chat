@@ -1,47 +1,29 @@
-/* eslint-disable sort-keys-fix/sort-keys-fix */
-import { transform } from 'lodash-es';
-
-import { withBasePath } from '@/utils/basePath';
-
-const mapWithBasePath = <T extends object>(apis: T): T => {
-  return transform(apis, (result, value, key) => {
-    if (typeof value === 'string') {
-      // @ts-ignore
-      result[key] = withBasePath(value);
-    } else {
-      result[key] = value;
-    }
-  });
-};
-
-export const API_ENDPOINTS = mapWithBasePath({
+export const API_ENDPOINTS = {
   oauth: '/api/auth',
-
-  proxy: '/webapi/proxy',
-
-  // assistant
-  assistantStore: '/webapi/assistant/store',
-  assistant: (identifier: string) => withBasePath(`/webapi/assistant/${identifier}`),
-
-  // plugins
-  gateway: '/webapi/plugin/gateway',
-  pluginStore: '/webapi/plugin/store',
 
   // trace
   trace: '/webapi/trace',
 
   // chat
-  chat: (provider: string) => withBasePath(`/webapi/chat/${provider}`),
-  chatModels: (provider: string) => withBasePath(`/webapi/chat/models/${provider}`),
+  chat: (provider: string) => `/webapi/chat/${provider}`,
 
-  // image
-  images: (provider: string) => `/webapi/text-to-image/${provider}`,
-
-  // STT
-  stt: '/webapi/stt/openai',
+  // models
+  models: (provider: string) => `/webapi/models/${provider}`,
+  modelPull: (provider: string) => `/webapi/models/${provider}/pull`,
+  pricing: (provider: string) => `/webapi/models/${provider}/pricing`,
 
   // TTS
-  tts: '/webapi/tts/openai',
-  edge: '/webapi/tts/edge',
-  microsoft: '/webapi/tts/microsoft',
-});
+  tts: (provider: string) => `/webapi/tts/${provider}`,
+};
+
+export const MARKET_OIDC_ENDPOINTS = {
+  // NOTE: `auth` is used to open a page in the system browser (desktop) / popup (web),
+  // so it must always be an HTTP(S) path joined with `NEXT_PUBLIC_MARKET_BASE_URL`.
+  // It MUST NOT be wrapped by the Electron backend protocol.
+  auth: '/lobehub-oidc/auth',
+  token: '/market/oidc/token',
+  userinfo: '/market/oidc/userinfo',
+  handoff: '/market/oidc/handoff',
+  // Same as `auth`: used as `redirect_uri` (must be a real web URL under market base).
+  desktopCallback: '/lobehub-oidc/callback/desktop',
+};

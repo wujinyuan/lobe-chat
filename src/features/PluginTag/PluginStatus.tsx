@@ -1,10 +1,10 @@
-import { ActionIcon } from '@lobehub/ui';
-import { Badge, Button, Tag } from 'antd';
+import { Flexbox } from '@lobehub/ui';
+import { ActionIcon, Button, Tag, Text } from '@lobehub/ui/base-ui';
+import { Badge } from 'antd';
 import isEqual from 'fast-deep-equal';
 import { LucideRotateCw, LucideTrash2, RotateCwIcon } from 'lucide-react';
 import { memo, useMemo } from 'react';
 import { useTranslation } from 'react-i18next';
-import { Flexbox } from 'react-layout-kit';
 
 import ManifestPreviewer from '@/components/ManifestPreviewer';
 import { useAgentStore } from '@/store/agent';
@@ -17,9 +17,10 @@ interface PluginStatusProps {
   title?: string;
 }
 const PluginStatus = memo<PluginStatusProps>(({ title, id, deprecated }) => {
-  const { t } = useTranslation('common');
-  const [status, isCustom, reinstallCustomPlugin] = useToolStore((s) => [
+  const { t } = useTranslation();
+  const [status, installError, isCustom, reinstallCustomPlugin] = useToolStore((s) => [
     toolSelectors.getManifestLoadingStatus(id)(s),
+    toolSelectors.getPluginInstallError(id)(s),
     customPluginSelectors.isCustomPlugin(id)(s),
     s.reinstallCustomPlugin,
   ]);
@@ -37,11 +38,11 @@ const PluginStatus = memo<PluginStatusProps>(({ title, id, deprecated }) => {
         return (
           <ActionIcon
             icon={LucideRotateCw}
+            size={'small'}
+            title={t('retry')}
             onClick={() => {
               reinstallCustomPlugin(id);
             }}
-            size={'small'}
-            title={t('retry')}
           />
         );
       }
@@ -51,49 +52,60 @@ const PluginStatus = memo<PluginStatusProps>(({ title, id, deprecated }) => {
         return <Badge status={'success'} />;
       }
     }
-  }, [status]);
+  }, [id, reinstallCustomPlugin, status, t]);
 
   const tag =
-    // 废弃标签
+    // Deprecated tag
     deprecated ? (
-      <Tag bordered={false} color={'red'} style={{ marginRight: 0 }}>
+      <Tag color={'red'} style={{ marginRight: 0 }} variant={'filled'}>
         {t('list.item.deprecated.title', { ns: 'plugin' })}
       </Tag>
-    ) : // 自定义标签
+    ) : // Custom tag
     isCustom ? (
-      <Tag bordered={false} color={'gold'}>
+      <Tag color={'gold'} variant={'filled'}>
         {t('list.item.local.title', { ns: 'plugin' })}
       </Tag>
     ) : null;
 
   return (
-    <Flexbox gap={12} horizontal justify={'space-between'}>
-      <Flexbox align={'center'} gap={8} horizontal>
-        {title || id}
-        {tag}
+    <Flexbox horizontal align={'flex-start'} gap={12} justify={'space-between'}>
+      <Flexbox gap={2}>
+        <Flexbox horizontal align={'center'} gap={8}>
+          {title || id}
+          {tag}
+        </Flexbox>
+        {installError ? (
+          <Text fontSize={12} type={'danger'}>
+            {t(`error.${installError.message}`, {
+              defaultValue: installError.cause,
+              error: installError.cause,
+              ns: 'plugin',
+            })}
+          </Text>
+        ) : null}
       </Flexbox>
 
       {deprecated ? (
         <ActionIcon
           icon={LucideTrash2}
+          size={'small'}
+          title={t('plugin.clearDeprecated', { ns: 'setting' })}
           onClick={(e) => {
             e.stopPropagation();
             removePlugin(id);
           }}
-          size={'small'}
-          title={t('plugin.clearDeprecated', { ns: 'setting' })}
         />
       ) : (
-        <Flexbox align={'center'} horizontal>
+        <Flexbox horizontal align={'center'}>
           {isCustom ? (
             <ActionIcon
               icon={RotateCwIcon}
+              size={'small'}
+              title={t('dev.meta.manifest.refresh', { ns: 'plugin' })}
               onClick={(e) => {
                 e.stopPropagation();
                 reinstallCustomPlugin(id);
               }}
-              size={'small'}
-              title={t('dev.meta.manifest.refresh', { ns: 'plugin' })}
             />
           ) : null}
           <ManifestPreviewer manifest={manifest || {}} trigger={'hover'}>

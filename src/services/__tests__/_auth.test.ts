@@ -1,15 +1,11 @@
+import { CLIENT_VERSION_HEADER, CURRENT_VERSION } from '@lobechat/const';
 import { act } from '@testing-library/react';
-import { describe, expect, it, vi } from 'vitest';
+import { ModelProvider } from 'model-bank';
+import { afterEach, describe, expect, it, vi } from 'vitest';
 
-import { ModelProvider } from '@/libs/agent-runtime';
 import { useUserStore } from '@/store/user';
-import {
-  GlobalLLMProviderKey,
-  UserKeyVaults,
-  UserModelProviderConfig,
-} from '@/types/user/settings';
 
-import { getProviderAuthPayload } from '../_auth';
+import { createHeaderWithAuth, getProviderAuthPayload } from '../_auth';
 
 // Mock data for different providers
 const mockZhiPuAPIKey = 'zhipu-api-key';
@@ -23,16 +19,51 @@ const mockTogetherAIAPIKey = 'togetherai-api-key';
 // mock the traditional zustand
 vi.mock('zustand/traditional');
 
-const setModelProviderConfig = <T extends GlobalLLMProviderKey>(
-  provider: T,
-  config: Partial<UserKeyVaults[T]>,
-) => {
+const mockCryptoValue = (value: number) => {
+  vi.stubGlobal('crypto', {
+    getRandomValues: vi.fn((array: Uint32Array) => {
+      array[0] = value;
+
+      return array;
+    }),
+  });
+};
+
+describe('createHeaderWithAuth', () => {
+  it('should include the current web client version', async () => {
+    const headers = await createHeaderWithAuth();
+
+    expect(headers).toEqual({
+      [CLIENT_VERSION_HEADER]: CURRENT_VERSION,
+    });
+  });
+
+  it('should preserve request headers without allowing a client version override', async () => {
+    const headers = await createHeaderWithAuth({
+      headers: {
+        'X-Lobe-Client-Version': 'spoofed',
+        'Content-Type': 'application/json',
+      },
+    });
+    const normalizedHeaders = new Headers(headers);
+
+    expect(normalizedHeaders.get(CLIENT_VERSION_HEADER)).toBe(CURRENT_VERSION);
+    expect(normalizedHeaders.get('content-type')).toBe('application/json');
+  });
+});
+
+const setModelProviderConfig = (provider: string, config: any) => {
   useUserStore.setState({
     settings: { keyVaults: { [provider]: config } },
   });
 };
 
 describe('getProviderAuthPayload', () => {
+  afterEach(() => {
+    vi.unstubAllGlobals();
+    vi.restoreAllMocks();
+  });
+
   it('should return correct payload for ZhiPu provider', () => {
     const payload = getProviderAuthPayload(ModelProvider.ZhiPu, { apiKey: mockZhiPuAPIKey });
     expect(payload).toEqual({ apiKey: mockZhiPuAPIKey });
@@ -79,7 +110,6 @@ describe('getProviderAuthPayload', () => {
   });
 
   it('should return correct payload for Bedrock provider', () => {
-    // 假设的 Bedrock 配置
     const mockBedrockConfig = {
       accessKeyId: 'bedrock-access-key-id',
       region: 'bedrock-region',
@@ -88,7 +118,7 @@ describe('getProviderAuthPayload', () => {
 
     const payload = getProviderAuthPayload(ModelProvider.Bedrock, mockBedrockConfig);
     expect(payload).toEqual({
-      apiKey: mockBedrockConfig.secretAccessKey + mockBedrockConfig.accessKeyId,
+      apiKey: undefined,
       awsAccessKeyId: mockBedrockConfig.accessKeyId,
       awsRegion: mockBedrockConfig.region,
       awsSecretAccessKey: mockBedrockConfig.secretAccessKey,
@@ -98,6 +128,37 @@ describe('getProviderAuthPayload', () => {
       region: mockBedrockConfig.region,
       sessionToken: undefined,
     });
+  });
+
+  it('should return correct payload for Bedrock API key authentication', () => {
+    const payload = getProviderAuthPayload(ModelProvider.Bedrock, {
+      apiKey: 'bedrock-api-key',
+      region: 'us-east-1',
+    });
+
+    expect(payload).toEqual({
+      accessKeyId: undefined,
+      accessKeySecret: undefined,
+      apiKey: 'bedrock-api-key',
+      awsAccessKeyId: undefined,
+      awsRegion: 'us-east-1',
+      awsSecretAccessKey: undefined,
+      awsSessionToken: undefined,
+      region: 'us-east-1',
+      sessionToken: undefined,
+    });
+  });
+
+  it('should pick one Bedrock API key with client key selection', () => {
+    const apiKey = 'bedrock-api-key-a,bedrock-api-key-b';
+    mockCryptoValue(1);
+
+    const payload = getProviderAuthPayload(ModelProvider.Bedrock, {
+      apiKey,
+      region: 'us-east-1',
+    });
+
+    expect(payload.apiKey).toBe('bedrock-api-key-b');
   });
 
   it('should return correct payload for Azure provider', () => {
@@ -111,8 +172,6 @@ describe('getProviderAuthPayload', () => {
     const payload = getProviderAuthPayload(ModelProvider.Azure, mockAzureConfig);
     expect(payload).toEqual({
       apiKey: mockAzureConfig.apiKey,
-      azureApiVersion: mockAzureConfig.apiVersion,
-      apiVersion: mockAzureConfig.apiVersion,
       baseURL: mockAzureConfig.endpoint,
     });
   });
@@ -172,6 +231,20 @@ describe('getProviderAuthPayload', () => {
       apiKey: mockCloudflareConfig.apiKey,
       baseURLOrAccountID: mockCloudflareConfig.baseURLOrAccountID,
       cloudflareBaseURLOrAccountID: mockCloudflareConfig.baseURLOrAccountID,
+    });
+  });
+
+  it('should return correct payload for VertexAI provider without splitting JSON credentials', () => {
+    // Vertex AI uses JSON credentials that contain commas
+    const mockVertexAIConfig = {
+      apiKey: '{"type":"service_account","project_id":"test-project","private_key":"test-key"}',
+      baseURL: 'https://us-central1-aiplatform.googleapis.com',
+    };
+
+    const payload = getProviderAuthPayload(ModelProvider.VertexAI, mockVertexAIConfig);
+    expect(payload).toEqual({
+      apiKey: mockVertexAIConfig.apiKey,
+      baseURL: mockVertexAIConfig.baseURL,
     });
   });
 

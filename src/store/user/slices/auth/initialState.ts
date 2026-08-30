@@ -1,26 +1,20 @@
-import { Session, User } from '@auth/core/types';
-import {
-  ActiveSessionResource,
-  SignInProps,
-  SignOut,
-  UserProfileProps,
-  UserResource,
-} from '@clerk/types';
+import { type SSOProvider } from '@lobechat/types';
 
-import { LobeUser } from '@/types/user';
+import { type LobeUser } from '@/types/user';
 
 export interface UserAuthState {
-  clerkOpenUserProfile?: (props?: UserProfileProps) => void;
-
-  clerkSession?: ActiveSessionResource;
-  clerkSignIn?: (props?: SignInProps) => void;
-  clerkSignOut?: SignOut;
-  clerkUser?: UserResource;
+  authProviders?: SSOProvider[];
+  /**
+   * Whether user registered with email/password (credential login)
+   */
+  hasPasswordAccount?: boolean;
+  /** Whether the current local cache identity has been authoritatively selected. */
+  isIdentityResolved?: boolean;
   isLoaded?: boolean;
 
+  isLoadedAuthProviders?: boolean;
+
   isSignedIn?: boolean;
-  nextSession?: Session;
-  nextUser?: User;
   oAuthSSOProviders?: string[];
   user?: LobeUser;
 }

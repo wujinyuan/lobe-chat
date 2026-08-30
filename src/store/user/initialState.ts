@@ -1,22 +1,28 @@
-import { UserAuthState, initialAuthState } from './slices/auth/initialState';
-import { CommonState, initialCommonState } from './slices/common/initialState';
-import { ModelListState, initialModelListState } from './slices/modelList/initialState';
-import { UserPreferenceState, initialPreferenceState } from './slices/preference/initialState';
-import { UserSettingsState, initialSettingsState } from './slices/settings/initialState';
-import { UserSyncState, initialSyncState } from './slices/sync/initialState';
+import { type UserAuthState } from './slices/auth/initialState';
+import { initialAuthState } from './slices/auth/initialState';
+import { type CommonState } from './slices/common/initialState';
+import { initialCommonState } from './slices/common/initialState';
+import { type OnboardingState } from './slices/onboarding/initialState';
+import { initialOnboardingState } from './slices/onboarding/initialState';
+import { type UserPreferenceState } from './slices/preference/initialState';
+import { initialPreferenceState } from './slices/preference/initialState';
+import { type UserSettingsState } from './slices/settings/initialState';
+import { initialSettingsState } from './slices/settings/initialState';
+import { type WorkspaceUserSettingsState } from './slices/workspaceUserSettings/initialState';
+import { initialWorkspaceUserSettingsState } from './slices/workspaceUserSettings/initialState';
 
-export type UserState = UserSyncState &
-  UserSettingsState &
+export type UserState = UserSettingsState &
   UserPreferenceState &
   UserAuthState &
-  ModelListState &
-  CommonState;
+  CommonState &
+  OnboardingState &
+  WorkspaceUserSettingsState;
 
 export const initialState: UserState = {
-  ...initialSyncState,
   ...initialSettingsState,
   ...initialPreferenceState,
   ...initialAuthState,
   ...initialCommonState,
-  ...initialModelListState,
+  ...initialOnboardingState,
+  ...initialWorkspaceUserSettingsState,
 };

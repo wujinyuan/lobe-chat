@@ -1,7 +1,7 @@
 import { t } from 'i18next';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 
-import { UserStore } from '@/store/user';
+import { type UserStore } from '@/store/user';
 
 import { authSelectors, userProfileSelectors } from './selectors';
 
@@ -9,42 +9,81 @@ vi.mock('i18next', () => ({
   t: vi.fn((key) => key),
 }));
 
-// 定义一个变量来存储 enableAuth 的值
-let enableAuth = true;
-
-// 模拟 @/const/auth 模块
-vi.mock('@/const/auth', () => ({
-  get enableAuth() {
-    return enableAuth;
-  },
-}));
-
 afterEach(() => {
-  enableAuth = true;
+  vi.clearAllMocks();
 });
 
 describe('userProfileSelectors', () => {
-  describe('nickName', () => {
-    it('should return default nickname when auth is disabled', () => {
-      enableAuth = false;
+  describe('displayUserName', () => {
+    it('should return user username when signed in', () => {
+      const store: UserStore = {
+        isSignedIn: true,
+        user: { username: 'johndoe' },
+      } as UserStore;
 
+      expect(userProfileSelectors.displayUserName(store)).toBe('johndoe');
+    });
+
+    it('should return email when signed in but username is not existed in UserStore', () => {
+      const store: UserStore = {
+        isSignedIn: true,
+        user: { email: 'demo@lobehub.com' },
+      } as UserStore;
+
+      expect(userProfileSelectors.displayUserName(store)).toBe('demo@lobehub.com');
+    });
+
+    it('should return "anonymous" when not signed in', () => {
       const store: UserStore = {
         isSignedIn: false,
         user: null,
-        enableAuth: () => false,
       } as unknown as UserStore;
 
-      expect(userProfileSelectors.nickName(store)).toBe('userPanel.defaultNickname');
-      expect(t).toHaveBeenCalledWith('userPanel.defaultNickname', { ns: 'common' });
+      expect(userProfileSelectors.displayUserName(store)).toBe('anonymous');
+    });
+  });
+
+  describe('email', () => {
+    it('should return user email if exist', () => {
+      const store: UserStore = {
+        user: { email: 'demo@lobehub.com' },
+      } as UserStore;
+
+      expect(userProfileSelectors.email(store)).toBe('demo@lobehub.com');
     });
 
-    it('should return user fullName when signed in', () => {
-      enableAuth = true;
+    it('should return empty string if not exist', () => {
+      const store: UserStore = {
+        user: { email: undefined },
+      } as UserStore;
 
+      expect(userProfileSelectors.email(store)).toBe('');
+    });
+  });
+
+  describe('fullName', () => {
+    it('should return user fullName if exist', () => {
+      const store: UserStore = {
+        user: { fullName: 'John Doe' },
+      } as UserStore;
+
+      expect(userProfileSelectors.fullName(store)).toBe('John Doe');
+    });
+
+    it('should return empty string if not exist', () => {
+      const store: UserStore = {
+        user: { fullName: undefined },
+      } as UserStore;
+
+      expect(userProfileSelectors.fullName(store)).toBe('');
+    });
+  });
+
+  describe('nickName', () => {
+    it('should return user fullName when signed in', () => {
       const store: UserStore = {
         isSignedIn: true,
         user: { fullName: 'John Doe' },
-        enableAuth: () => true,
       } as UserStore;
 
       expect(userProfileSelectors.nickName(store)).toBe('John Doe');
@@ -54,17 +93,13 @@ describe('userProfileSelectors', () => {
       const store: UserStore = {
         isSignedIn: true,
         user: { username: 'johndoe' },
-        enableAuth: () => true,
       } as UserStore;
 
       expect(userProfileSelectors.nickName(store)).toBe('johndoe');
     });
 
     it('should return anonymous nickname when not signed in', () => {
-      enableAuth = true;
-
       const store: UserStore = {
-        enableAuth: () => true,
         isSignedIn: false,
         user: null,
       } as unknown as UserStore;
@@ -75,23 +110,10 @@ describe('userProfileSelectors', () => {
   });
 
   describe('username', () => {
-    it('should return default username when auth is disabled', () => {
-      enableAuth = false;
-
-      const store: UserStore = {
-        isSignedIn: false,
-        user: null,
-        enableAuth: () => false,
-      } as unknown as UserStore;
-
-      expect(userProfileSelectors.username(store)).toBe('LobeChat');
-    });
-
     it('should return user username when signed in', () => {
       const store: UserStore = {
         isSignedIn: true,
         user: { username: 'johndoe' },
-        enableAuth: () => true,
       } as UserStore;
 
       expect(userProfileSelectors.username(store)).toBe('johndoe');
@@ -99,7 +121,6 @@ describe('userProfileSelectors', () => {
 
     it('should return "anonymous" when not signed in', () => {
       const store: UserStore = {
-        enableAuth: () => true,
         isSignedIn: false,
         user: null,
       } as unknown as UserStore;
@@ -111,30 +132,17 @@ describe('userProfileSelectors', () => {
 
 describe('authSelectors', () => {
   describe('isLogin', () => {
-    it('should return true when auth is disabled', () => {
-      enableAuth = false;
-
-      const store: UserStore = {
-        isSignedIn: false,
-        enableAuth: () => false,
-      } as UserStore;
-
-      expect(authSelectors.isLogin(store)).toBe(true);
-    });
-
     it('should return true when signed in', () => {
       const store: UserStore = {
         isSignedIn: true,
-        enableAuth: () => true,
       } as UserStore;
 
       expect(authSelectors.isLogin(store)).toBe(true);
     });
 
-    it('should return false when not signed in and auth is enabled', () => {
+    it('should return false when not signed in', () => {
       const store: UserStore = {
         isSignedIn: false,
-        enableAuth: () => true,
       } as UserStore;
 
       expect(authSelectors.isLogin(store)).toBe(false);

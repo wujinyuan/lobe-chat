@@ -1,13 +1,12 @@
 export { authSelectors, userProfileSelectors } from './slices/auth/selectors';
+export { onboardingSelectors } from './slices/onboarding/selectors';
+export { labPreferSelectors, preferenceSelectors } from './slices/preference/selectors';
 export {
   keyVaultsConfigSelectors,
-  modelConfigSelectors,
-  modelProviderSelectors,
-} from './slices/modelList/selectors';
-export { preferenceSelectors } from './slices/preference/selectors';
-export {
   settingsSelectors,
   systemAgentSelectors,
+  toolInterventionSelectors,
   userGeneralSettingsSelectors,
+  userUsageSettingsSelectors,
 } from './slices/settings/selectors';
-export { syncSettingsSelectors } from './slices/sync/selectors';
+export { workspaceUserSettingsSelectors } from './slices/workspaceUserSettings/selectors';

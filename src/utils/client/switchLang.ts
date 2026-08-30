@@ -1,12 +1,15 @@
+import { setCookie } from '@lobechat/utils';
 import { changeLanguage } from 'i18next';
 
 import { LOBE_LOCALE_COOKIE } from '@/const/locale';
-import { LocaleMode } from '@/types/locale';
+import { type LocaleMode } from '@/types/locale';
+import { getSystemLanguage } from '@/utils/client/systemLanguage';
 
-import { setCookie } from './cookie';
+export const resolveLang = (locale: LocaleMode) =>
+  locale === 'auto' ? getSystemLanguage() : locale;
 
 export const switchLang = (locale: LocaleMode) => {
-  const lang = locale === 'auto' ? navigator.language : locale;
+  const lang = resolveLang(locale);
 
   changeLanguage(lang);
   document.documentElement.lang = lang;

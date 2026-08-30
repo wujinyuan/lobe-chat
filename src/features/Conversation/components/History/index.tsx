@@ -1,61 +1,61 @@
 import { ModelTag } from '@lobehub/icons';
-import { Icon, Markdown } from '@lobehub/ui';
-import { Typography } from 'antd';
-import { createStyles } from 'antd-style';
+import { Center, Flexbox, Icon, Markdown } from '@lobehub/ui';
+import { Text } from '@lobehub/ui/base-ui';
+import { createStaticStyles, cssVar } from 'antd-style';
 import { ScrollText } from 'lucide-react';
 import { memo } from 'react';
 import { useTranslation } from 'react-i18next';
-import { Center, Flexbox } from 'react-layout-kit';
 
-import { useChatStore } from '@/store/chat';
-import { topicSelectors } from '@/store/chat/selectors';
+import { chatConfigByIdSelectors } from '@/store/agent/selectors';
+import { useAgentStore } from '@/store/agent/store';
 
+import { contextSelectors, dataSelectors, useConversationStore } from '../../store';
 import HistoryDivider from './HistoryDivider';
 
-const useStyles = createStyles(({ css, token }) => ({
+const styles = createStaticStyles(({ css, cssVar }) => ({
   container: css`
     padding-inline: 12px;
     border-radius: 12px;
   `,
   content: css`
-    color: ${token.colorTextDescription};
+    color: ${cssVar.colorTextDescription};
   `,
   line: css`
     width: 3px;
     height: 100%;
-    background: ${token.colorBorder};
+    background: ${cssVar.colorBorder};
   `,
 }));
 
 const History = memo(() => {
-  const { styles, theme } = useStyles();
   const { t } = useTranslation('chat');
-  const [content, model] = useChatStore((s) => {
-    const history = topicSelectors.currentActiveTopicSummary(s);
+  const [content, model] = useConversationStore(() => {
+    const history = dataSelectors.currentTopicSummary();
     return [history?.content, history?.model];
   });
+
+  const agentId = useConversationStore(contextSelectors.agentId);
+  const enableCompressHistory = useAgentStore(
+    (s) => chatConfigByIdSelectors.getChatConfigById(agentId)(s).enableCompressHistory,
+  );
 
   return (
     <Flexbox paddingInline={16} style={{ paddingBottom: 8 }}>
       <HistoryDivider enable />
-      {!!content && (
+      {enableCompressHistory && !!content && (
         <Flexbox className={styles.container} gap={8}>
-          <Flexbox align={'flex-start'} gap={8} horizontal>
+          <Flexbox horizontal align={'flex-start'} gap={8}>
             <Center height={20} width={20}>
-              <Icon
-                icon={ScrollText}
-                size={{ fontSize: 16 }}
-                style={{ color: theme.colorTextDescription }}
-              />
+              <Icon icon={ScrollText} size={16} style={{ color: cssVar.colorTextDescription }} />
             </Center>
-            <Typography.Text type={'secondary'}>{t('historySummary')}</Typography.Text>
+            <Text type={'secondary'}>{t('historySummary')}</Text>
             {model && (
               <div>
                 <ModelTag model={model} />
               </div>
             )}
           </Flexbox>
-          <Flexbox align={'flex-start'} gap={8} horizontal>
+          <Flexbox horizontal align={'flex-start'} gap={8}>
             <Flexbox align={'center'} padding={8} width={20}>
               <div className={styles.line} />
             </Flexbox>

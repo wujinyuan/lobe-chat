@@ -1,21 +1,41 @@
-import { Icon, Modal } from '@lobehub/ui';
-import { createStyles } from 'antd-style';
-import { LucideIcon } from 'lucide-react';
-import { rgba } from 'polished';
-import { ReactNode, memo } from 'react';
-import { Flexbox } from 'react-layout-kit';
+import { Flexbox, Icon } from '@lobehub/ui';
+import { createStaticStyles } from 'antd-style';
+import { type LucideIcon } from 'lucide-react';
+import { type ReactNode } from 'react';
+import { memo } from 'react';
 
-const useStyles = createStyles(({ css, token, prefixCls, isDarkMode }) => ({
-  modalTitle: css`
+import ImperativeModal from '@/components/ImperativeModal';
+import { useIsDark } from '@/hooks/useIsDark';
+
+const prefixCls = 'ant';
+
+const styles = createStaticStyles(({ css, cssVar }) => ({
+  modalTitleDark: css`
     &.${prefixCls}-modal-header {
       height: 80px;
       background:
         linear-gradient(
           180deg,
-          ${rgba(token.colorBgElevated, 0)},
-          ${token.colorBgContainer} ${isDarkMode ? '80' : '140'}px
+          color-mix(in srgb, ${cssVar.colorBgElevated} 0%, transparent),
+          ${cssVar.colorBgContainer} 80px
         ),
-        fixed 0 0 /10px 10px radial-gradient(${token.colorFill} 1px, transparent 0);
+        fixed 0 0 /10px 10px radial-gradient(${cssVar.colorFill} 1px, transparent 0);
+    }
+
+    & .${prefixCls}-modal-title {
+      font-size: 24px;
+    }
+  `,
+  modalTitleLight: css`
+    &.${prefixCls}-modal-header {
+      height: 80px;
+      background:
+        linear-gradient(
+          180deg,
+          color-mix(in srgb, ${cssVar.colorBgElevated} 0%, transparent),
+          ${cssVar.colorBgContainer} 140px
+        ),
+        fixed 0 0 /10px 10px radial-gradient(${cssVar.colorFill} 1px, transparent 0);
     }
 
     & .${prefixCls}-modal-title {
@@ -36,29 +56,29 @@ interface DataStyleModalProps {
 
 const DataStyleModal = memo<DataStyleModalProps>(
   ({ icon, onOpenChange, title, open, children, width = 550, height }) => {
-    const { styles } = useStyles();
+    const isDarkMode = useIsDark();
 
     return (
-      <Modal
-        afterOpenChange={onOpenChange}
+      <ImperativeModal
         centered
-        classNames={{
-          header: styles.modalTitle,
-        }}
+        afterOpenChange={onOpenChange}
         closable={false}
         footer={null}
         height={height}
         open={open}
+        width={width}
+        classNames={{
+          header: isDarkMode ? styles.modalTitleDark : styles.modalTitleLight,
+        }}
         title={
-          <Flexbox gap={8} horizontal>
+          <Flexbox horizontal gap={8}>
             <Icon icon={icon} />
             {title}
           </Flexbox>
         }
-        width={width}
       >
         {children}
-      </Modal>
+      </ImperativeModal>
     );
   },
 );

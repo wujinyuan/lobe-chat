@@ -1,6 +1,17 @@
 const dns = require('node:dns').promises;
 const fs = require('node:fs').promises;
+const path = require('node:path');
 const { spawn } = require('node:child_process');
+const { existsSync } = require('node:fs');
+
+// Resolve shared module path for both local dev and Docker environments
+// Local: scripts/serverLauncher/startServer.js -> scripts/_shared/...
+// Docker: /app/startServer.js -> /app/scripts/_shared/...
+const localPath = path.join(__dirname, '..', '_shared', 'checkDeprecatedAuth.js');
+const dockerPath = '/app/scripts/_shared/checkDeprecatedAuth.js';
+const sharedModulePath = existsSync(localPath) ? localPath : dockerPath;
+
+const { checkDeprecatedAuth } = require(sharedModulePath);
 
 // Set file paths
 const DB_MIGRATION_SCRIPT_PATH = '/app/docker.cjs';
@@ -9,10 +20,9 @@ const PROXYCHAINS_CONF_PATH = '/etc/proxychains4.conf';
 
 // Function to check if a string is a valid IP address
 const isValidIP = (ip, version = 4) => {
-  const ipv4Regex =
-    /^(25[0-5]|2[0-4]\d|[01]?\d{1,2})(\.(25[0-5]|2[0-4]\d|[01]?\d{1,2})){3}$/;
+  const ipv4Regex = /^(25[0-5]|2[0-4]\d|[01]?\d{1,2})(\.(25[0-5]|2[0-4]\d|[01]?\d{1,2})){3}$/;
   const ipv6Regex =
-    /^(([\da-f]{1,4}:){7}[\da-f]{1,4}|([\da-f]{1,4}:){1,7}:|([\da-f]{1,4}:){1,6}:[\da-f]{1,4}|([\da-f]{1,4}:){1,5}(:[\da-f]{1,4}){1,2}|([\da-f]{1,4}:){1,4}(:[\da-f]{1,4}){1,3}|([\da-f]{1,4}:){1,3}(:[\da-f]{1,4}){1,4}|([\da-f]{1,4}:){1,2}(:[\da-f]{1,4}){1,5}|[\da-f]{1,4}:((:[\da-f]{1,4}){1,6})|:((:[\da-f]{1,4}){1,7}|:)|fe80:(:[\da-f]{0,4}){0,4}%[\da-z]+|::(ffff(:0{1,4}){0,1}:){0,1}((25[0-5]|(2[0-4]|1{0,1}\d){0,1}\d)\.){3}(25[0-5]|(2[0-4]|1{0,1}\d){0,1}\d)|([\da-f]{1,4}:){1,4}:((25[0-5]|(2[0-4]|1{0,1}\d){0,1}\d)\.){3}(25[0-5]|(2[0-4]|1{0,1}\d){0,1}\d))$/;
+    /^(([\da-f]{1,4}:){7}[\da-f]{1,4}|([\da-f]{1,4}:){1,7}:|([\da-f]{1,4}:){1,6}:[\da-f]{1,4}|([\da-f]{1,4}:){1,5}(:[\da-f]{1,4}){1,2}|([\da-f]{1,4}:){1,4}(:[\da-f]{1,4}){1,3}|([\da-f]{1,4}:){1,3}(:[\da-f]{1,4}){1,4}|([\da-f]{1,4}:){1,2}(:[\da-f]{1,4}){1,5}|[\da-f]{1,4}:((:[\da-f]{1,4}){1,6})|:((:[\da-f]{1,4}){1,7}|:)|fe80:(:[\da-f]{0,4}){0,4}%[\da-z]+|::(ffff(:0{1,4})?:)?((25[0-5]|(2[0-4]|1?\d)?\d)\.){3}(25[0-5]|(2[0-4]|1?\d)?\d)|([\da-f]{1,4}:){1,4}:((25[0-5]|(2[0-4]|1?\d)?\d)\.){3}(25[0-5]|(2[0-4]|1?\d)?\d))$/;
 
   switch (version) {
     case 4: {
@@ -74,20 +84,29 @@ const runProxyChainsConfGenerator = async (url) => {
 
   let ip = isValidIP(host, 4) ? host : await resolveHostIP(host, 4);
 
-  const configContent = `
-localnet 127.0.0.0/255.0.0.0
-localnet 10.0.0.0/255.0.0.0
-localnet 172.16.0.0/255.240.0.0
-localnet 192.168.0.0/255.255.0.0
-localnet ::1/128
+  const proxyDNSConfig =
+    process.env.ENABLE_PROXY_DNS === '1'
+      ? `
 proxy_dns
 remote_dns_subnet 224
+`.trim()
+      : '';
+
+  const configContent = `
+localnet 127.0.0.0/8
+localnet 10.0.0.0/8
+localnet 172.16.0.0/12
+localnet 192.168.0.0/16
+localnet ::/127
+${proxyDNSConfig}
 strict_chain
 tcp_connect_time_out 8000
 tcp_read_time_out 15000
 [ProxyList]
 ${protocol} ${ip} ${port} ${user} ${pass}
-`.trim();
+`
+    .replaceAll(/\n{2,}/g, '\n')
+    .trim();
 
   await fs.writeFile(PROXYCHAINS_CONF_PATH, configContent);
   console.log(`✅ ProxyChains: All outgoing traffic routed via ${url}.`);
@@ -107,6 +126,84 @@ const runScript = (scriptPath, useProxy = false) => {
   });
 };
 
+// Function to start the bot gateway by calling the local API endpoint
+const startGateway = async () => {
+  const KEY_VAULTS_SECRET = process.env.KEY_VAULTS_SECRET;
+  if (!KEY_VAULTS_SECRET) return;
+
+  const port = process.env.PORT || 3210;
+  const url = `http://localhost:${port}/api/agent/gateway/start`;
+  const maxRetries = 10;
+  const retryDelay = 3000;
+
+  for (let i = 0; i < maxRetries; i++) {
+    try {
+      const res = await fetch(url, {
+        method: 'POST',
+        headers: {
+          'Authorization': `Bearer ${KEY_VAULTS_SECRET}`,
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({}),
+      });
+
+      if (res.ok) {
+        console.log('✅ Gateway: Started successfully.');
+        return;
+      }
+
+      console.warn(`⚠️ Gateway: Received status ${res.status}, retrying...`);
+    } catch {
+      if (i < maxRetries - 1) {
+        await new Promise((r) => setTimeout(r, retryDelay));
+      }
+    }
+  }
+
+  console.error('❌ Gateway: Failed to start after retries.');
+};
+
+// Function to create QStash schedule for dispatching workflow tasks every 10 minutes
+const createQstashSchedule = async () => {
+  const QSTASH_URL = process.env.QSTASH_URL || 'https://qstash-eu-central-1.upstash.io';
+
+  const QSTASH_TOKEN = process.env.QSTASH_TOKEN;
+  if (!QSTASH_TOKEN) {
+    console.warn('⚠️ QStash: QSTASH_TOKEN not set. Skipping schedule creation.');
+    return;
+  }
+
+  const APP_URL = process.env.APP_URL;
+  if (!APP_URL) {
+    console.warn('⚠️ QStash: APP_URL not set. Skipping schedule creation.');
+    return;
+  }
+
+  const url = `${QSTASH_URL}/v2/schedules/${APP_URL}/api/workflows/task/schedule-dispatch`;
+
+  try {
+    const res = await fetch(url, {
+      method: 'POST',
+      headers: {
+        'Authorization': `Bearer ${QSTASH_TOKEN}`,
+        'Content-Type': 'application/json',
+        'Upstash-Method': 'POST',
+        'Upstash-Cron': '*/10 * * * *',
+        'Upstash-Schedule-Id': 'lobe-task-schedule-dispatch',
+      },
+      body: JSON.stringify({}),
+    });
+
+    if (res.ok) {
+      console.log('✅ QStash: Schedule created successfully.');
+    } else {
+      console.error(`❌ QStash: Failed to create schedule. Status ${res.status}`);
+    }
+  } catch (err) {
+    console.error('❌ QStash: Error creating schedule:', err);
+  }
+};
+
 // Main function to run the server with optional proxy
 const runServer = async () => {
   const PROXY_URL = process.env.PROXY_URL || ''; // Default empty string to avoid undefined errors
@@ -120,6 +217,9 @@ const runServer = async () => {
 
 // Main execution block
 (async () => {
+  // Check for deprecated auth env vars first - fail fast if found
+  checkDeprecatedAuth({ action: 'restart' });
+
   console.log('🌐 DNS Server:', dns.getServers());
   console.log('-------------------------------------');
 
@@ -141,6 +241,12 @@ const runServer = async () => {
       }
     }
   }
+
+  // Start gateway in background after server is ready
+  startGateway();
+
+  // Create QStash schedule for workflow task dispatching
+  createQstashSchedule();
 
   // Run the server in either database or non-database mode
   await runServer();

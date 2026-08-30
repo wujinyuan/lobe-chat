@@ -1,7 +1,7 @@
+import { type UIChatMessage } from '@lobechat/types';
 import { describe, expect, it } from 'vitest';
 
 import { LOADING_FLAT } from '@/const/message';
-import { ChatMessage } from '@/types/message';
 
 import { generateMarkdown } from './template';
 
@@ -40,7 +40,7 @@ describe('generateMarkdown', () => {
       createdAt: Date.now(),
       tools: [{ name: 'calculator', result: '42' }],
     },
-  ] as ChatMessage[];
+  ] as UIChatMessage[];
 
   const defaultParams = {
     messages: mockMessages,
@@ -166,7 +166,7 @@ describe('generateMarkdown', () => {
         role: 'user',
         createdAt: Date.now(),
       },
-    ] as ChatMessage[];
+    ] as UIChatMessage[];
 
     const result = generateMarkdown({
       ...defaultParams,
@@ -174,5 +174,23 @@ describe('generateMarkdown', () => {
     });
 
     expect(result).toContain('**Bold** *Italic* `Code`');
+  });
+
+  it('should normalize think tags before exporting markdown', () => {
+    const messagesWithThinkTags = [
+      {
+        id: '1',
+        content: 'Intro<think>Reasoning</think>Outro',
+        role: 'assistant',
+        createdAt: Date.now(),
+      },
+    ] as UIChatMessage[];
+
+    const result = generateMarkdown({
+      ...defaultParams,
+      messages: messagesWithThinkTags,
+    });
+
+    expect(result).toContain('Intro\n\n<think>\n\nReasoning\n\n</think>\n\nOutro');
   });
 });

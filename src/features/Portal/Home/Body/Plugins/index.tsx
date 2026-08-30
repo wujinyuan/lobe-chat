@@ -1,7 +1,7 @@
-import { Typography } from 'antd';
+import { Flexbox } from '@lobehub/ui';
+import { Text } from '@lobehub/ui/base-ui';
 import { memo } from 'react';
 import { useTranslation } from 'react-i18next';
-import { Flexbox } from 'react-layout-kit';
 
 import ArtifactList from './ArtifactList';
 
@@ -10,9 +10,9 @@ export const Artifacts = memo(() => {
 
   return (
     <Flexbox gap={8}>
-      <Typography.Title level={5} style={{ marginInline: 12 }}>
+      <Text as={'h5'} style={{ marginInline: 12 }}>
         {t('Plugins')}
-      </Typography.Title>
+      </Text>
       <ArtifactList />
     </Flexbox>
   );

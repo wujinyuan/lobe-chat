@@ -1,13 +1,14 @@
-import { THREAD_DRAFT_ID } from '@/const/message';
-import { useAgentStore } from '@/store/agent';
-import { agentSelectors } from '@/store/agent/selectors';
-import type { ChatStoreState } from '@/store/chat';
-import { chatHelpers } from '@/store/chat/helpers';
-import { ChatMessage } from '@/types/message';
-import { ThreadItem } from '@/types/topic';
+import { type ThreadItem, ThreadType, type UIChatMessage } from '@lobechat/types';
 
-import { chatSelectors } from '../../message/selectors';
-import { genMessage } from './util';
+import { useAgentStore } from '@/store/agent';
+import { agentChatConfigSelectors } from '@/store/agent/selectors';
+import { type ChatStoreState } from '@/store/chat';
+import { chatHelpers } from '@/store/chat/helpers';
+import { messageMapKey } from '@/store/chat/utils/messageMapKey';
+
+import { genParentMessages } from './util';
+
+// ============= Thread List Selectors ============= //
 
 const currentTopicThreads = (s: ChatStoreState) => {
   if (!s.activeTopicId) return [];
@@ -23,127 +24,26 @@ const currentPortalThread = (s: ChatStoreState): ThreadItem | undefined => {
   return threads.find((t) => t.id === s.portalThreadId);
 };
 
-const threadStartMessageId = (s: ChatStoreState) => s.threadStartMessageId;
+const currentActiveThread = (s: ChatStoreState): ThreadItem | undefined => {
+  if (!s.activeThreadId) return undefined;
 
-const threadSourceMessageId = (s: ChatStoreState) => {
-  if (s.startToForkThread) return threadStartMessageId(s);
+  const threads = currentTopicThreads(s);
 
-  const portalThread = currentPortalThread(s);
-  return portalThread?.sourceMessageId;
+  return threads.find((t) => t.id === s.activeThreadId);
 };
 
-const getTheadParentMessages = (s: ChatStoreState, data: ChatMessage[]) => {
-  if (s.startToForkThread) {
-    const startMessageId = threadStartMessageId(s)!;
-
-    // 存在 threadId 的消息是子消息，在创建付消息时需要忽略
-    const messages = data.filter((m) => !m.threadId);
-    return genMessage(messages, startMessageId, s.newThreadMode);
-  }
-
-  const portalThread = currentPortalThread(s);
-  return genMessage(data, portalThread?.sourceMessageId, portalThread?.type);
+const isActiveThreadSubagent = (s: ChatStoreState): boolean => {
+  const thread = currentActiveThread(s);
+  // Only tool-spawned subagent threads are externally owned and read-only.
+  // Direct @Agent isolation threads are ordinary target-Agent conversations
+  // after the delegated run completes, so users can continue chatting there.
+  return !!thread?.metadata?.sourceToolCallId;
 };
 
-// ======= Portal Thread Display Chats ======= //
-// =========================================== //
-
-/**
- * 获取当前 thread 的父级消息
- */
-const portalDisplayParentMessages = (s: ChatStoreState): ChatMessage[] => {
-  const data = chatSelectors.activeBaseChatsWithoutTool(s);
-
-  return getTheadParentMessages(s, data);
-};
-
-/**
- * these messages are the messages that are in the thread
- *
- */
-const portalDisplayChildChatsByThreadId =
-  (id?: string) =>
-  (s: ChatStoreState): ChatMessage[] => {
-    // skip tool message
-    const data = chatSelectors.activeBaseChatsWithoutTool(s);
-
-    return data.filter((m) => !!id && m.threadId === id);
-  };
-
-const portalDisplayChats = (s: ChatStoreState) => {
-  const parentMessages = portalDisplayParentMessages(s);
-  const afterMessages = portalDisplayChildChatsByThreadId(s.portalThreadId)(s);
-  // use for optimistic update
-  const draftMessage = chatSelectors.activeBaseChats(s).find((m) => m.threadId === THREAD_DRAFT_ID);
-
-  return [...parentMessages, draftMessage, ...afterMessages].filter(Boolean) as ChatMessage[];
-};
-
-const portalDisplayChatsLength = (s: ChatStoreState) => {
-  // history length include a thread divider
-  return portalDisplayChats(s).length;
-};
-const portalDisplayChatsString = (s: ChatStoreState) => {
-  const messages = portalDisplayChats(s);
-
-  return messages.map((m) => m.content).join('');
-};
-
-const portalDisplayChatIDs = (s: ChatStoreState): string[] =>
-  portalDisplayChats(s).map((i) => i.id);
-
-// ========= Portal Thread AI Chats ========= //
-// ========================================== //
-
-const portalAIParentMessages = (s: ChatStoreState): ChatMessage[] => {
-  const data = chatSelectors.activeBaseChats(s);
-
-  return getTheadParentMessages(s, data);
-};
-
-const portalAIChildChatsByThreadId =
-  (id?: string) =>
-  (s: ChatStoreState): ChatMessage[] => {
-    // skip tool message
-    const data = chatSelectors.activeBaseChats(s);
-
-    return data.filter((m) => !!id && m.threadId === id);
-  };
-
-const portalAIChats = (s: ChatStoreState) => {
-  const parentMessages = portalAIParentMessages(s);
-  const afterMessages = portalAIChildChatsByThreadId(s.portalThreadId)(s);
-
-  return [...parentMessages, ...afterMessages].filter(Boolean) as ChatMessage[];
-};
-
-const portalAIChatsWithHistoryConfig = (s: ChatStoreState) => {
-  const parentMessages = portalAIParentMessages(s);
-  const afterMessages = portalAIChildChatsByThreadId(s.portalThreadId)(s);
-
-  const messages = [...parentMessages, ...afterMessages].filter(Boolean) as ChatMessage[];
-
-  const config = agentSelectors.currentAgentChatConfig(useAgentStore.getState());
-
-  return chatHelpers.getSlicedMessagesWithConfig(messages, config);
-};
-
-const threadSourceMessageIndex = (s: ChatStoreState) => {
-  const theadMessageId = threadSourceMessageId(s);
-  const data = portalDisplayChats(s);
-
-  return !theadMessageId ? -1 : data.findIndex((d) => d.id === theadMessageId);
-};
 const getThreadsByTopic = (topicId?: string) => (s: ChatStoreState) => {
   if (!topicId) return;
 
   return s.threadMaps[topicId];
-};
-
-const getFirstThreadBySourceMsgId = (id: string) => (s: ChatStoreState) => {
-  const threads = currentTopicThreads(s);
-
-  return threads.find((t) => t.sourceMessageId === id);
 };
 
 const getThreadsBySourceMsgId = (id: string) => (s: ChatStoreState) => {
@@ -152,51 +52,139 @@ const getThreadsBySourceMsgId = (id: string) => (s: ChatStoreState) => {
   return threads.filter((t) => t.sourceMessageId === id);
 };
 
+const getIsolationThreadBySourceMsgId = (id: string) => (s: ChatStoreState) => {
+  const threads = currentTopicThreads(s);
+
+  return threads.find(
+    (thread) => thread.sourceMessageId === id && thread.type === ThreadType.Isolation,
+  );
+};
+
 const hasThreadBySourceMsgId = (id: string) => (s: ChatStoreState) => {
   const threads = currentTopicThreads(s);
 
   return threads.some((t) => t.sourceMessageId === id);
 };
 
-const isThreadAIGenerating = (s: ChatStoreState) =>
-  s.chatLoadingIds.some((id) => portalDisplayChatIDs(s).includes(id));
-
-const isInRAGFlow = (s: ChatStoreState) =>
-  s.messageRAGLoadingIds.some((id) => portalDisplayChatIDs(s).includes(id));
-const isCreatingMessage = (s: ChatStoreState) => s.isCreatingThreadMessage;
-const isHasMessageLoading = (s: ChatStoreState) =>
-  s.messageLoadingIds.some((id) => portalDisplayChatIDs(s).includes(id));
+// ============= Thread Messages Selectors ============= //
+// These are kept for Token calculation and AI title summarization
+// Thread Chat component now uses dbMessagesMap directly
 
 /**
- * this function is used to determine whether the send button should be disabled
+ * Get main scope messages (without activeThreadId influence).
+ * Always uses main scope key so that thread selectors work correctly
+ * even when activeThreadId is set (i.e., viewing inside a subtopic).
  */
-const isSendButtonDisabledByMessage = (s: ChatStoreState) =>
-  // 1. when there is message loading
-  isHasMessageLoading(s) ||
-  // 2. when is creating the topic
-  s.isCreatingThread ||
-  // 3. when is creating the message
-  isCreatingMessage(s) ||
-  // 4. when the message is in RAG flow
-  isInRAGFlow(s);
+const getMainScopeMessages = (s: ChatStoreState): UIChatMessage[] => {
+  if (!s.activeAgentId) return [];
+  const mainKey = messageMapKey({
+    agentId: s.activeAgentId,
+    groupId: s.activeGroupId,
+    topicId: s.activeTopicId,
+  });
+  return s.messagesMap[mainKey] || [];
+};
+
+/**
+ * Internal helper to get parent messages for a thread
+ */
+const getThreadParentMessages = (s: ChatStoreState, data: UIChatMessage[]) => {
+  if (s.startToForkThread) {
+    const startMessageId = s.threadStartMessageId!;
+
+    // Filter out messages that belong to other threads
+    const messages = data.filter((m) => !m.threadId);
+    return genParentMessages(messages, startMessageId, s.newThreadMode);
+  }
+
+  const portalThread = currentPortalThread(s);
+  return genParentMessages(data, portalThread?.sourceMessageId, portalThread?.type);
+};
+
+/**
+ * Get thread child messages by thread ID
+ */
+const getThreadChildMessages =
+  (id?: string) =>
+  (s: ChatStoreState): UIChatMessage[] => {
+    const data = getMainScopeMessages(s);
+    return data.filter((m) => !!id && m.threadId === id);
+  };
+
+/**
+ * Raw DB-level child messages for a thread, keyed by `messageMapKey` thread scope.
+ *
+ * Use this for *counting* / *aggregating* over individual messages (e.g. the
+ * subagent inspector chip's tool count + token total). Do NOT use it for
+ * rendering — the display layer reads from `messagesMap` (which groups tools
+ * into a virtual `assistantGroup`), so the shapes intentionally differ.
+ *
+ * Why `dbMessagesMap` not `messagesMap`: `messagesMap[thread_*]` only holds
+ * the rendered shape ([user, assistantGroup]); individual `role==='tool'` /
+ * `role==='assistant'` rows live in `dbMessagesMap[thread_*]`.
+ */
+const getThreadDbMessages =
+  (id?: string) =>
+  (s: ChatStoreState): UIChatMessage[] => {
+    if (!id || !s.activeAgentId) return [];
+    const key = messageMapKey({
+      agentId: s.activeAgentId,
+      groupId: s.activeGroupId,
+      threadId: id,
+      topicId: s.activeTopicId,
+    });
+    return (s.dbMessagesMap?.[key] || []) as UIChatMessage[];
+  };
+
+/**
+ * Portal AI chats - used for AI title summarization
+ */
+const portalAIChats = (s: ChatStoreState) => {
+  const data = getMainScopeMessages(s);
+  const parentMessages = getThreadParentMessages(s, data);
+  const childMessages = getThreadChildMessages(s.portalThreadId)(s);
+
+  return [...parentMessages, ...childMessages].filter(Boolean) as UIChatMessage[];
+};
+
+/**
+ * Portal AI chats with history config - used for workflow
+ */
+const portalAIChatsWithHistoryConfig = (s: ChatStoreState) => {
+  const messages = portalAIChats(s);
+
+  const enableHistoryCount = agentChatConfigSelectors.enableHistoryCount(useAgentStore.getState());
+  const historyCount = agentChatConfigSelectors.historyCount(useAgentStore.getState());
+
+  return chatHelpers.getSlicedMessages(messages, {
+    enableHistoryCount,
+    historyCount,
+  });
+};
+
+/**
+ * Portal display chats string - used for Token calculation
+ */
+const portalDisplayChatsString = (s: ChatStoreState) => {
+  const messages = portalAIChats(s);
+  return messages.map((m) => m.content).join('');
+};
 
 export const threadSelectors = {
+  currentActiveThread,
   currentPortalThread,
   currentTopicThreads,
-  getFirstThreadBySourceMsgId,
+  getThreadChildMessages,
+  getThreadDbMessages,
+  getIsolationThreadBySourceMsgId,
   getThreadsBySourceMsgId,
   getThreadsByTopic,
   hasThreadBySourceMsgId,
-  isSendButtonDisabledByMessage,
-  isThreadAIGenerating,
+  isActiveThreadSubagent,
   portalAIChats,
   portalAIChatsWithHistoryConfig,
-  portalDisplayChatIDs,
-  portalDisplayChats,
-  portalDisplayChatsLength,
   portalDisplayChatsString,
-  portalDisplayChildChatsByThreadId,
-  threadSourceMessageId,
-  threadSourceMessageIndex,
-  threadStartMessageId,
 };
+
+// Re-export utility function for use in action.ts
+export { genParentMessages } from './util';

@@ -1,28 +1,27 @@
+import { type ChatCompletionErrorPayload } from '@lobechat/model-runtime';
+import { AGENT_RUNTIME_ERROR_SET } from '@lobechat/model-runtime';
+import { ChatErrorType } from '@lobechat/types';
+
 import { checkAuth } from '@/app/(backend)/middleware/auth';
-import {
-  AGENT_RUNTIME_ERROR_SET,
-  AgentRuntime,
-  ChatCompletionErrorPayload,
-} from '@/libs/agent-runtime';
-import { createTraceOptions, initAgentRuntimeWithUserPayload } from '@/server/modules/AgentRuntime';
-import { ChatErrorType } from '@/types/fetch';
-import { ChatStreamPayload } from '@/types/openai/chat';
+import { createTraceOptions, initModelRuntimeFromDB } from '@/server/modules/ModelRuntime';
+import { type ChatStreamPayload } from '@/types/openai/chat';
 import { createErrorResponse } from '@/utils/errorResponse';
 import { getTracePayload } from '@/utils/trace';
 
-export const runtime = 'edge';
+import { resolveValidWorkspaceIdFromRequest } from '../../_utils/workspace';
 
-export const POST = checkAuth(async (req: Request, { params, jwtPayload, createRuntime }) => {
-  const { provider } = await params;
+// If user don't use fluid compute, will build  failed
+// this enforce user to enable fluid compute
+export const maxDuration = 300;
+
+export const POST = checkAuth(async (req: Request, { params, userId, serverDB }) => {
+  const provider = (await params)!.provider!;
 
   try {
+    const workspaceId = await resolveValidWorkspaceIdFromRequest({ req, serverDB, userId });
+
     // ============  1. init chat model   ============ //
-    let agentRuntime: AgentRuntime;
-    if (createRuntime) {
-      agentRuntime = createRuntime(jwtPayload);
-    } else {
-      agentRuntime = await initAgentRuntimeWithUserPayload(provider, jwtPayload);
-    }
+    const modelRuntime = await initModelRuntimeFromDB(serverDB, userId, provider, workspaceId);
 
     // ============  2. create chat completion   ============ //
 
@@ -33,13 +32,14 @@ export const POST = checkAuth(async (req: Request, { params, jwtPayload, createR
     let traceOptions = {};
     // If user enable trace
     if (tracePayload?.enabled) {
-      traceOptions = createTraceOptions(data, {
-        provider,
-        trace: tracePayload,
-      });
+      traceOptions = createTraceOptions(data, { provider, trace: tracePayload });
     }
 
-    return await agentRuntime.chat(data, { user: jwtPayload.userId, ...traceOptions });
+    return await modelRuntime.chat(data, {
+      user: userId,
+      ...traceOptions,
+      signal: req.signal,
+    });
   } catch (e) {
     const {
       errorType = ChatErrorType.InternalServerError,
@@ -49,9 +49,12 @@ export const POST = checkAuth(async (req: Request, { params, jwtPayload, createR
 
     const error = errorContent || e;
 
-    const logMethod = AGENT_RUNTIME_ERROR_SET.has(errorType as string) ? 'warn' : 'error';
     // track the error at server side
-    console[logMethod](`Route: [${provider}] ${errorType}:`, error);
+    if (AGENT_RUNTIME_ERROR_SET.has(errorType as string)) {
+      console.warn(`Route: [${provider}] ${errorType}:`, error);
+    } else {
+      console.error(`Route: [${provider}] ${errorType}:`, error);
+    }
 
     return createErrorResponse(errorType, { error, ...res, provider });
   }

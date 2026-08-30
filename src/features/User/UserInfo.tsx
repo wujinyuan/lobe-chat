@@ -1,26 +1,17 @@
 'use client';
 
-import { createStyles } from 'antd-style';
+import { type FlexboxProps } from '@lobehub/ui';
+import { Flexbox } from '@lobehub/ui';
+import { Text } from '@lobehub/ui/base-ui';
+import { cssVar } from 'antd-style';
 import { memo } from 'react';
-import { Flexbox, FlexboxProps } from 'react-layout-kit';
 
-import PlanTag from '@/features/User/PlanTag';
+import ThemeButton from '@/features/User/UserPanel/ThemeButton';
 import { useUserStore } from '@/store/user';
 import { authSelectors, userProfileSelectors } from '@/store/user/selectors';
 
-import UserAvatar, { type UserAvatarProps } from './UserAvatar';
-
-const useStyles = createStyles(({ css, token }) => ({
-  nickname: css`
-    font-size: 16px;
-    font-weight: bold;
-    line-height: 1;
-  `,
-  username: css`
-    line-height: 1;
-    color: ${token.colorTextDescription};
-  `,
-}));
+import { type UserAvatarProps } from './UserAvatar';
+import UserAvatar from './UserAvatar';
 
 export interface UserInfoProps extends FlexboxProps {
   avatarProps?: Partial<UserAvatarProps>;
@@ -28,31 +19,36 @@ export interface UserInfoProps extends FlexboxProps {
 }
 
 const UserInfo = memo<UserInfoProps>(({ avatarProps, onClick, ...rest }) => {
-  const { styles, theme } = useStyles();
   const isSignedIn = useUserStore(authSelectors.isLogin);
   const [nickname, username] = useUserStore((s) => [
     userProfileSelectors.nickName(s),
-    userProfileSelectors.username(s),
+    userProfileSelectors.displayUserName(s),
   ]);
 
   return (
     <Flexbox
+      horizontal
       align={'center'}
       gap={12}
-      horizontal
       justify={'space-between'}
       paddingBlock={12}
       paddingInline={12}
       {...rest}
     >
-      <Flexbox align={'center'} gap={12} horizontal onClick={onClick}>
-        <UserAvatar background={theme.colorFill} size={48} {...avatarProps} />
-        <Flexbox flex={1} gap={6}>
-          <div className={styles.nickname}>{nickname}</div>
-          <div className={styles.username}>{username}</div>
+      <Flexbox horizontal align={'center'} gap={10} onClick={onClick}>
+        <UserAvatar background={cssVar.colorFill} size={36} {...(avatarProps as any)} />
+        <Flexbox flex={1}>
+          <Text style={{ lineHeight: 1.4 }} weight={'bold'}>
+            {nickname}
+          </Text>
+          {username && (
+            <Text fontSize={12} style={{ lineHeight: 1.4 }} type={'secondary'}>
+              {username}
+            </Text>
+          )}
         </Flexbox>
       </Flexbox>
-      {isSignedIn && <PlanTag />}
+      {isSignedIn && <ThemeButton placement={'right'} size={16} />}
     </Flexbox>
   );
 });

@@ -1,9 +1,10 @@
-import { ActionIcon } from '@lobehub/ui';
+import { Flexbox } from '@lobehub/ui';
+import { ActionIcon } from '@lobehub/ui/base-ui';
+import { cssVar } from 'antd-style';
 import { ArrowLeftRight, XIcon } from 'lucide-react';
 import { memo } from 'react';
-import { Flexbox } from 'react-layout-kit';
 
-import SidebarHeader from '@/components/SidebarHeader';
+import NavHeader from '@/features/NavHeader';
 import { useChatStore } from '@/store/chat';
 
 import Title from './Title';
@@ -17,12 +18,17 @@ const Header = memo(() => {
   ]);
 
   return (
-    <SidebarHeader
-      actions={
-        <Flexbox horizontal>
+    <NavHeader
+      left={<Title />}
+      paddingBlock={6}
+      paddingInline={8}
+      showTogglePanelButton={false}
+      right={
+        <Flexbox horizontal gap={4}>
           {hasPortal && (
             <ActionIcon
               icon={ArrowLeftRight}
+              size={'small'}
               onClick={() => {
                 if (!portalThreadId) return;
 
@@ -31,11 +37,12 @@ const Header = memo(() => {
               }}
             />
           )}
-          <ActionIcon icon={XIcon} onClick={closeThreadPortal} />
+          <ActionIcon icon={XIcon} size={'small'} onClick={closeThreadPortal} />
         </Flexbox>
       }
-      style={{ paddingBlock: 8, paddingInline: 8 }}
-      title={<Title />}
+      style={{
+        borderBottom: `1px solid ${cssVar.colorBorderSecondary}`,
+      }}
     />
   );
 });

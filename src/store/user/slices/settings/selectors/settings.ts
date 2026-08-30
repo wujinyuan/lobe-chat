@@ -1,19 +1,22 @@
-import { DEFAULT_AGENT_META } from '@/const/meta';
 import {
   DEFAULT_AGENT,
   DEFAULT_AGENT_CONFIG,
+  DEFAULT_AGENT_META,
+  DEFAULT_HOTKEY_CONFIG,
+  DEFAULT_MEMORY_SETTINGS,
   DEFAULT_SYSTEM_AGENT_CONFIG,
   DEFAULT_TTS_CONFIG,
-} from '@/const/settings';
+} from '@lobechat/const';
 import {
-  GlobalLLMProviderKey,
-  ProviderConfig,
-  UserModelProviderConfig,
-  UserSettings,
-} from '@/types/user/settings';
-import { merge } from '@/utils/merge';
+  type GlobalLLMProviderKey,
+  type HotkeyId,
+  type ProviderConfig,
+  type UserModelProviderConfig,
+  type UserSettings,
+} from '@lobechat/types';
 
-import { UserStore } from '../../../store';
+import { type UserStore } from '@/store/user';
+import { merge } from '@/utils/merge';
 
 export const currentSettings = (s: UserStore): UserSettings => merge(s.defaultSettings, s.settings);
 
@@ -22,6 +25,13 @@ export const currentLLMSettings = (s: UserStore): UserModelProviderConfig =>
 
 export const getProviderConfigById = (provider: string) => (s: UserStore) =>
   currentLLMSettings(s)[provider as GlobalLLMProviderKey] as ProviderConfig | undefined;
+
+const currentImageSettings = (s: UserStore) => currentSettings(s).image;
+
+const currentMemorySettings = (s: UserStore) =>
+  merge(DEFAULT_MEMORY_SETTINGS, currentSettings(s).memory);
+
+const memoryEnabled = (s: UserStore) => currentMemorySettings(s).enabled !== false;
 
 const currentTTS = (s: UserStore) => merge(DEFAULT_TTS_CONFIG, currentSettings(s).tts);
 
@@ -32,21 +42,23 @@ const defaultAgentMeta = (s: UserStore) => merge(DEFAULT_AGENT_META, defaultAgen
 
 const exportSettings = currentSettings;
 
-const dalleConfig = (s: UserStore) => currentSettings(s).tool?.dalle || {};
-const isDalleAutoGenerating = (s: UserStore) => currentSettings(s).tool?.dalle?.autoGenerate;
-
 const currentSystemAgent = (s: UserStore) =>
   merge(DEFAULT_SYSTEM_AGENT_CONFIG, currentSettings(s).systemAgent);
 
+const getHotkeyById = (id: HotkeyId) => (s: UserStore) =>
+  merge(DEFAULT_HOTKEY_CONFIG, currentSettings(s).hotkey)[id];
+
 export const settingsSelectors = {
+  currentImageSettings,
+  currentMemorySettings,
   currentSettings,
   currentSystemAgent,
   currentTTS,
-  dalleConfig,
   defaultAgent,
   defaultAgentConfig,
   defaultAgentMeta,
   exportSettings,
-  isDalleAutoGenerating,
+  getHotkeyById,
+  memoryEnabled,
   providerConfig: getProviderConfigById,
 };

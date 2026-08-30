@@ -1,51 +1,41 @@
-import { ActionIcon } from '@lobehub/ui';
-import { Popover } from 'antd';
-import { useTheme } from 'antd-style';
 import { Settings2Icon } from 'lucide-react';
-import { memo, useState } from 'react';
+import { memo } from 'react';
 import { useTranslation } from 'react-i18next';
-import { Flexbox } from 'react-layout-kit';
 
-import UpdateLoading from '@/components/Loading/UpdateLoading';
-import { useIsMobile } from '@/hooks/useIsMobile';
+import { useAgentStore } from '@/store/agent';
+import { agentByIdSelectors } from '@/store/agent/selectors';
 
-import ParamsControls from './ParamsControls';
+import { useAgentId } from '../../hooks/useAgentId';
+import { ChatInputAction } from '../components/ChatInputAction';
+import Controls from './Controls';
 
 const Params = memo(() => {
+  const agentId = useAgentId();
+  const [isLoading] = useAgentStore((s) => [
+    agentByIdSelectors.isAgentConfigLoadingById(agentId)(s),
+  ]);
   const { t } = useTranslation('setting');
-  const [popoverOpen, setPopoverOpen] = useState(false);
-  const [isUpdating, setUpdating] = useState(false);
 
-  const theme = useTheme();
-  const isMobile = useIsMobile();
+  if (isLoading) return <ChatInputAction disabled icon={Settings2Icon} />;
+
   return (
-    <Popover
-      arrow={false}
-      content={<ParamsControls setUpdating={setUpdating} />}
-      onOpenChange={setPopoverOpen}
-      open={popoverOpen}
-      placement={'top'}
-      styles={{
-        body: {
-          minWidth: isMobile ? undefined : 400,
-          width: isMobile ? '100vw' : undefined,
+    <ChatInputAction
+      icon={Settings2Icon}
+      showTooltip={false}
+      title={t('settingModel.params.title')}
+      popover={{
+        content: <Controls />,
+        maxWidth: 384,
+        minWidth: 384,
+        styles: {
+          content: {
+            borderRadius: 16,
+            overflow: 'hidden',
+            padding: 0,
+          },
         },
       }}
-      title={
-        <Flexbox horizontal justify={'space-between'}>
-          {t('settingModel.params.title')}
-
-          {isUpdating && <UpdateLoading style={{ color: theme.colorTextSecondary }} />}
-        </Flexbox>
-      }
-      trigger={'click'}
-    >
-      <ActionIcon
-        icon={Settings2Icon}
-        placement={'bottom'}
-        title={popoverOpen ? undefined : t('settingModel.params.title')}
-      />
-    </Popover>
+    />
   );
 });
 

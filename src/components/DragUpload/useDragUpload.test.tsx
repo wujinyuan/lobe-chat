@@ -1,7 +1,20 @@
+import { toast } from '@lobehub/ui/base-ui';
 import { act, renderHook } from '@testing-library/react';
-import { Mock, afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import { type Mock } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+
+import { useMediaUploadAbility } from '@/hooks/useMediaUploadAbility';
+import { useAgentStore } from '@/store/agent';
+import { agentSelectors } from '@/store/agent/selectors';
 
 import { getContainer, useDragUpload } from './useDragUpload';
+
+// Mock the hooks and components
+vi.mock('@/hooks/useMediaUploadAbility');
+vi.mock('@/store/agent');
+vi.mock('@lobehub/ui/base-ui', () => {
+  return { toast: { warning: vi.fn() } };
+});
 
 describe('useDragUpload', () => {
   let mockOnUploadFiles: Mock;
@@ -10,6 +23,17 @@ describe('useDragUpload', () => {
     mockOnUploadFiles = vi.fn();
     vi.useFakeTimers();
     document.body.innerHTML = '';
+
+    // Mock the hooks
+    (useMediaUploadAbility as Mock).mockReturnValue({
+      canUploadImage: false,
+      canUploadVideo: false,
+    });
+    (useAgentStore as unknown as Mock).mockImplementation((selector) => {
+      if (selector === agentSelectors.currentAgentModel) return 'test-model';
+      if (selector === agentSelectors.currentAgentModelProvider) return 'test-provider';
+      return null;
+    });
   });
 
   afterEach(() => {
@@ -114,6 +138,122 @@ describe('useDragUpload', () => {
     });
 
     expect(mockOnUploadFiles).toHaveBeenCalledWith([mockFile]);
+  });
+
+  it('should show warning when dropping image file with vision not supported', async () => {
+    renderHook(() => useDragUpload(mockOnUploadFiles));
+
+    const mockImageFile = new File([''], 'test.png', { type: 'image/png' });
+    const dropEvent = new Event('drop') as DragEvent;
+    Object.defineProperty(dropEvent, 'dataTransfer', {
+      value: {
+        items: [
+          {
+            kind: 'file',
+            getAsFile: () => mockImageFile,
+            webkitGetAsEntry: () => ({
+              isFile: true,
+              file: (cb: (file: File) => void) => cb(mockImageFile),
+            }),
+          },
+        ],
+        types: ['Files'],
+      },
+    });
+
+    await act(async () => {
+      window.dispatchEvent(dropEvent);
+    });
+
+    expect(mockOnUploadFiles).not.toHaveBeenCalled();
+  });
+
+  it('should show warning when pasting image file with vision not supported', async () => {
+    renderHook(() => useDragUpload(mockOnUploadFiles));
+
+    const mockImageFile = new File([''], 'test.png', { type: 'image/png' });
+    const pasteEvent = new Event('paste') as ClipboardEvent;
+    Object.defineProperty(pasteEvent, 'clipboardData', {
+      value: {
+        items: [
+          {
+            kind: 'file',
+            getAsFile: () => mockImageFile,
+            webkitGetAsEntry: () => null,
+          },
+        ],
+      },
+    });
+
+    await act(async () => {
+      window.dispatchEvent(pasteEvent);
+    });
+
+    expect(mockOnUploadFiles).not.toHaveBeenCalled();
+  });
+
+  it('should allow image files when vision is supported', async () => {
+    (useMediaUploadAbility as Mock).mockReturnValue({
+      canUploadImage: true,
+      canUploadVideo: false,
+    });
+
+    renderHook(() => useDragUpload(mockOnUploadFiles));
+
+    const mockImageFile = new File([''], 'test.png', { type: 'image/png' });
+    const dropEvent = new Event('drop') as DragEvent;
+    Object.defineProperty(dropEvent, 'dataTransfer', {
+      value: {
+        items: [
+          {
+            kind: 'file',
+            getAsFile: () => mockImageFile,
+            webkitGetAsEntry: () => ({
+              isFile: true,
+              file: (cb: (file: File) => void) => cb(mockImageFile),
+            }),
+          },
+        ],
+        types: ['Files'],
+      },
+    });
+
+    await act(async () => {
+      window.dispatchEvent(dropEvent);
+    });
+
+    expect(mockOnUploadFiles).toHaveBeenCalledWith([mockImageFile]);
+    expect(toast.warning).not.toHaveBeenCalled();
+  });
+
+  it('should allow image files when visual understanding fallback is enabled', async () => {
+    (useMediaUploadAbility as Mock).mockReturnValue({
+      canUploadImage: true,
+      canUploadVideo: true,
+    });
+
+    renderHook(() => useDragUpload(mockOnUploadFiles));
+
+    const mockImageFile = new File([''], 'test.png', { type: 'image/png' });
+    const pasteEvent = new Event('paste') as ClipboardEvent;
+    Object.defineProperty(pasteEvent, 'clipboardData', {
+      value: {
+        items: [
+          {
+            kind: 'file',
+            getAsFile: () => mockImageFile,
+            webkitGetAsEntry: () => null,
+          },
+        ],
+      },
+    });
+
+    await act(async () => {
+      window.dispatchEvent(pasteEvent);
+    });
+
+    expect(mockOnUploadFiles).toHaveBeenCalledWith([mockImageFile]);
+    expect(toast.warning).not.toHaveBeenCalled();
   });
 });
 

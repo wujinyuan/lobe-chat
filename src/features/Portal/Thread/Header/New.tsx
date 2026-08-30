@@ -1,8 +1,7 @@
-import { Icon } from '@lobehub/ui';
-import { Checkbox, Typography } from 'antd';
+import { Flexbox, Icon } from '@lobehub/ui';
+import { Switch, Text } from '@lobehub/ui/base-ui';
 import { GitBranch } from 'lucide-react';
 import { useTranslation } from 'react-i18next';
-import { Flexbox } from 'react-layout-kit';
 
 import { useChatStore } from '@/store/chat';
 import { portalThreadSelectors } from '@/store/chat/selectors';
@@ -11,26 +10,27 @@ import { ThreadType } from '@/types/topic';
 
 const NewThreadHeader = () => {
   const { t } = useTranslation('thread');
+
   const [newThreadMode] = useChatStore((s) => [portalThreadSelectors.newThreadMode(s)]);
 
   return (
-    <Flexbox>
-      <Flexbox align={'center'} gap={8} horizontal style={{ marginInlineStart: 8 }}>
-        <Icon icon={GitBranch} size={{ fontSize: 20 }} />
-        <Typography.Text className={oneLineEllipsis} style={{ fontSize: 16, fontWeight: 'bold' }}>
-          {t('newPortalThread.title')}
-        </Typography.Text>
-        <Checkbox
+    <Flexbox horizontal align={'center'} gap={8} style={{ marginInlineStart: 4 }}>
+      <Icon icon={GitBranch} size={18} />
+      <Text ellipsis className={oneLineEllipsis} style={{ fontSize: 14 }}>
+        {t('newPortalThread.title')}
+      </Text>
+      <Flexbox horizontal align={'center'} gap={8}>
+        <Switch
           checked={newThreadMode === ThreadType.Continuation}
+          size={'small'}
+          style={{ marginInlineStart: 12 }}
           onChange={(e) => {
             useChatStore.setState({
-              newThreadMode: e.target.checked ? ThreadType.Continuation : ThreadType.Standalone,
+              newThreadMode: e ? ThreadType.Continuation : ThreadType.Standalone,
             });
           }}
-          style={{ marginInlineStart: 12 }}
-        >
-          {t('newPortalThread.includeContext')}
-        </Checkbox>
+        />
+        {t('newPortalThread.includeContext')}
       </Flexbox>
     </Flexbox>
   );

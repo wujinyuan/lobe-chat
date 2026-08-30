@@ -1,33 +1,38 @@
-import { ChatMessage } from '@/types/message';
+import { type UIChatMessage } from '@lobechat/types';
+
+import { type ChatGroupAgentItem } from '@/database/schemas/chatGroup';
 
 export interface ChatMessageState {
+  activeAgentId: string;
   /**
-   * @title 当前活动的会话
-   * @description 当前正在编辑或查看的会话
+   * Raw messages from database (flat structure)
    */
-  activeId: string;
-
+  dbMessagesMap: Record<string, UIChatMessage[]>;
+  /**
+   * Group agents maps by group ID
+   */
+  groupAgentMaps: Record<string, ChatGroupAgentItem[]>;
   isCreatingMessage: boolean;
   /**
    * is the message is editing
    */
   messageEditingIds: string[];
   /**
-   * is the message is creating or updating in the service
-   */
-  messageLoadingIds: string[];
-  /**
    * whether messages have fetched
    */
   messagesInit: boolean;
-  messagesMap: Record<string, ChatMessage[]>;
+  /**
+   * Parsed messages for display (includes assistantGroup from conversation-flow)
+   */
+  messagesMap: Record<string, UIChatMessage[]>;
 }
 
 export const initialMessageState: ChatMessageState = {
-  activeId: 'inbox',
+  activeAgentId: '',
+  dbMessagesMap: {},
+  groupAgentMaps: {},
   isCreatingMessage: false,
   messageEditingIds: [],
-  messageLoadingIds: [],
   messagesInit: false,
   messagesMap: {},
 };

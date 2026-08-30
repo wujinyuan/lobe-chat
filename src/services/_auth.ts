@@ -1,37 +1,39 @@
-import { JWTPayload, LOBE_CHAT_AUTH_HEADER } from '@/const/auth';
-import { isDeprecatedEdition } from '@/const/version';
-import { ModelProvider } from '@/libs/agent-runtime';
-import { aiProviderSelectors, useAiInfraStore } from '@/store/aiInfra';
-import { useUserStore } from '@/store/user';
-import { keyVaultsConfigSelectors, userProfileSelectors } from '@/store/user/selectors';
+import { CLIENT_VERSION_HEADER, CURRENT_VERSION } from '@lobechat/const';
 import {
-  AWSBedrockKeyVault,
-  AzureOpenAIKeyVault,
-  CloudflareKeyVault,
-  OpenAICompatibleKeyVault,
-} from '@/types/user/settings';
-import { createJWT } from '@/utils/jwt';
+  type AWSBedrockKeyVault,
+  type AzureOpenAIKeyVault,
+  type CloudflareKeyVault,
+  type ComfyUIKeyVault,
+  type OpenAICompatibleKeyVault,
+  type VertexAIKeyVault,
+} from '@lobechat/types';
+import { clientApiKeyManager } from '@lobechat/utils/client';
+import { ModelProvider } from 'model-bank/modelProvider';
+
+import { aiProviderSelectors, useAiInfraStore } from '@/store/aiInfra';
+
+import { resolveRuntimeProvider } from './chat/helper';
 
 export const getProviderAuthPayload = (
   provider: string,
   keyVaults: OpenAICompatibleKeyVault &
     AzureOpenAIKeyVault &
     AWSBedrockKeyVault &
-    CloudflareKeyVault,
+    CloudflareKeyVault &
+    ComfyUIKeyVault &
+    VertexAIKeyVault,
 ) => {
   switch (provider) {
     case ModelProvider.Bedrock: {
-      const { accessKeyId, region, secretAccessKey, sessionToken } = keyVaults;
+      const { accessKeyId, apiKey, region, secretAccessKey, sessionToken } = keyVaults;
 
       const awsSecretAccessKey = secretAccessKey;
       const awsAccessKeyId = accessKeyId;
 
-      const apiKey = (awsSecretAccessKey || '') + (awsAccessKeyId || '');
-
       return {
         accessKeyId,
         accessKeySecret: awsSecretAccessKey,
-        apiKey,
+        apiKey: clientApiKeyManager.pick(apiKey),
         /** @deprecated */
         awsAccessKeyId,
         /** @deprecated */
@@ -47,11 +49,7 @@ export const getProviderAuthPayload = (
 
     case ModelProvider.Azure: {
       return {
-        apiKey: keyVaults.apiKey,
-        
-        apiVersion: keyVaults.apiVersion,
-        /** @deprecated */
-azureApiVersion: keyVaults.apiVersion,
+        apiKey: clientApiKeyManager.pick(keyVaults.apiKey),
         baseURL: keyVaults.baseURL || keyVaults.endpoint,
       };
     }
@@ -62,59 +60,60 @@ azureApiVersion: keyVaults.apiVersion,
 
     case ModelProvider.Cloudflare: {
       return {
-        apiKey: keyVaults?.apiKey,
-        
+        apiKey: clientApiKeyManager.pick(keyVaults?.apiKey),
+
         baseURLOrAccountID: keyVaults?.baseURLOrAccountID,
         /** @deprecated */
-cloudflareBaseURLOrAccountID: keyVaults?.baseURLOrAccountID,
+        cloudflareBaseURLOrAccountID: keyVaults?.baseURLOrAccountID,
+      };
+    }
+
+    case ModelProvider.ComfyUI: {
+      return {
+        apiKey: keyVaults?.apiKey,
+        authType: keyVaults?.authType,
+        baseURL: keyVaults?.baseURL,
+        customHeaders: keyVaults?.customHeaders,
+        password: keyVaults?.password,
+        username: keyVaults?.username,
+      };
+    }
+
+    case ModelProvider.VertexAI: {
+      // Vertex AI uses JSON credentials, should not split by comma
+      return {
+        apiKey: keyVaults?.apiKey,
+        baseURL: keyVaults?.baseURL,
+        vertexAIRegion: keyVaults?.region,
       };
     }
 
     default: {
-      return { apiKey: keyVaults?.apiKey, baseURL: keyVaults?.baseURL };
+      return { apiKey: clientApiKeyManager.pick(keyVaults?.apiKey), baseURL: keyVaults?.baseURL };
     }
   }
 };
 
-const createAuthTokenWithPayload = async (payload = {}) => {
-  const accessCode = keyVaultsConfigSelectors.password(useUserStore.getState());
-  const userId = userProfileSelectors.userId(useUserStore.getState());
-
-  return createJWT<JWTPayload>({ accessCode, userId, ...payload });
-};
-
 interface AuthParams {
-  // eslint-disable-next-line no-undef
   headers?: HeadersInit;
-  payload?: Record<string, any>;
   provider?: string;
 }
 
 export const createPayloadWithKeyVaults = (provider: string) => {
-  let keyVaults = {};
+  const keyVaults =
+    aiProviderSelectors.providerKeyVaults(provider)(useAiInfraStore.getState()) || {};
 
-  // TODO: remove this condition in V2.0
-  if (isDeprecatedEdition) {
-    keyVaults = keyVaultsConfigSelectors.getVaultByProvider(provider as any)(
-      useUserStore.getState(),
-    );
-  } else {
-    keyVaults = aiProviderSelectors.providerKeyVaults(provider)(useAiInfraStore.getState()) || {};
-  }
+  const runtimeProvider = resolveRuntimeProvider(provider);
 
-  return getProviderAuthPayload(provider, keyVaults);
+  return {
+    ...getProviderAuthPayload(runtimeProvider, keyVaults as any),
+    runtimeProvider,
+  };
 };
 
-// eslint-disable-next-line no-undef
 export const createHeaderWithAuth = async (params?: AuthParams): Promise<HeadersInit> => {
-  let payload = params?.payload || {};
+  const headers = new Headers(params?.headers);
+  headers.set(CLIENT_VERSION_HEADER, CURRENT_VERSION);
 
-  if (params?.provider) {
-    payload = { ...payload, ...createPayloadWithKeyVaults(params?.provider) };
-  }
-
-  const token = await createAuthTokenWithPayload(payload);
-
-  // eslint-disable-next-line no-undef
-  return { ...params?.headers, [LOBE_CHAT_AUTH_HEADER]: token };
+  return Object.fromEntries(headers.entries());
 };

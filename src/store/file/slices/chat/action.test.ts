@@ -1,29 +1,55 @@
+import type { ChatContextContent } from '@lobechat/types';
+import { toast } from '@lobehub/ui/base-ui';
 import { act, renderHook } from '@testing-library/react';
-import useSWR from 'swr';
-import { Mock, afterEach, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
+import { beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
 
-import { notification } from '@/components/AntdStaticMethods';
-import { DB_File } from '@/database/_deprecated/schemas/files';
 import { fileService } from '@/services/file';
-import { uploadService } from '@/services/upload';
+import { agentByIdSelectors } from '@/store/agent/selectors';
 
 import { useFileStore as useStore } from '../../store';
 
+const AGENT_ID = 'agent-1';
+
+/** Force the conversation agent into chat / agent / heterogeneous mode for the by-id selectors. */
+const mockAgentMode = ({
+  enableAgentMode,
+  heterogeneous,
+}: {
+  enableAgentMode: boolean;
+  heterogeneous: boolean;
+}) => {
+  vi.spyOn(agentByIdSelectors, 'getAgentEnableModeById').mockReturnValue(() => enableAgentMode);
+  vi.spyOn(agentByIdSelectors, 'isAgentHeterogeneousById').mockReturnValue(() => heterogeneous);
+};
+
 vi.mock('zustand/traditional');
 
-// Mock necessary modules and functions
-vi.mock('@/components/AntdStaticMethods', () => ({
-  notification: {
+vi.mock('@lobehub/ui/base-ui', () => ({
+  toast: {
     error: vi.fn(),
   },
 }));
 
-// Mock for useSWR
-vi.mock('swr', () => ({
-  default: vi.fn(),
+vi.mock('@/services/rag', () => ({
+  ragService: {
+    parseFileContent: vi.fn().mockResolvedValue(undefined),
+  },
 }));
 
-//  mock the arrayBuffer
+vi.mock('i18next', () => ({
+  t: (key: string, options?: { reason?: string }) => {
+    if (key === 'upload.permissionDenied') {
+      return 'You do not have permission to upload files in this workspace.';
+    }
+
+    if (key === 'upload.uploadFailed') return 'File upload failed.';
+
+    if (key === 'upload.unknownError') return `Error reason: ${options?.reason}`;
+
+    return key;
+  },
+}));
+
 beforeAll(() => {
   Object.defineProperty(File.prototype, 'arrayBuffer', {
     writable: true,
@@ -40,15 +66,119 @@ beforeAll(() => {
 });
 
 beforeEach(() => {
-  // Reset all mocks before each test
   vi.resetAllMocks();
 });
 
 describe('useFileStore:chat', () => {
+  it('isolates context selections by conversation key', () => {
+    const { result } = renderHook(() => useStore());
+    const sharedIdSelectionA: ChatContextContent = {
+      content: 'selection A',
+      id: 'shared-selection',
+      type: 'text',
+    };
+    const sharedIdSelectionB: ChatContextContent = {
+      content: 'selection B',
+      id: 'shared-selection',
+      type: 'text',
+    };
+
+    act(() => {
+      useStore.setState({ chatContextSelectionsByContext: {} });
+      result.current.addChatContextSelection({
+        contextKey: 'topic-a',
+        selection: sharedIdSelectionA,
+      });
+      result.current.addChatContextSelection({
+        contextKey: 'topic-b',
+        selection: sharedIdSelectionB,
+      });
+    });
+
+    expect(result.current.chatContextSelectionsByContext).toEqual({
+      'topic-a': [sharedIdSelectionA],
+      'topic-b': [sharedIdSelectionB],
+    });
+
+    act(() => {
+      result.current.removeChatContextSelection({
+        contextKey: 'topic-a',
+        id: sharedIdSelectionA.id,
+      });
+    });
+
+    expect(result.current.chatContextSelectionsByContext).toEqual({
+      'topic-b': [sharedIdSelectionB],
+    });
+
+    act(() => {
+      result.current.clearChatContextSelections('topic-b');
+    });
+
+    expect(result.current.chatContextSelectionsByContext).toEqual({});
+  });
+
+  it('moves context selections to a new conversation key without overwriting the target', () => {
+    const { result } = renderHook(() => useStore());
+    const sourceSelection: ChatContextContent = {
+      content: 'source selection',
+      id: 'shared-selection',
+      type: 'text',
+    };
+    const targetSelection: ChatContextContent = {
+      content: 'stale target selection',
+      id: 'shared-selection',
+      type: 'text',
+    };
+    const targetOnlySelection: ChatContextContent = {
+      content: 'target only',
+      id: 'target-only',
+      type: 'text',
+    };
+
+    act(() => {
+      useStore.setState({
+        chatContextSelectionsByContext: {
+          'topic-new': [sourceSelection],
+          'topic-real': [targetSelection, targetOnlySelection],
+        },
+      });
+      result.current.moveChatContextSelections('topic-new', 'topic-real');
+    });
+
+    expect(result.current.chatContextSelectionsByContext).toEqual({
+      'topic-real': [sourceSelection, targetOnlySelection],
+    });
+  });
+
+  it('restores submitted selections without overwriting context added while sending', () => {
+    const { result } = renderHook(() => useStore());
+    const submittedSelection: ChatContextContent = {
+      content: 'submitted selection',
+      id: 'submitted',
+      type: 'text',
+    };
+    const newerSelection: ChatContextContent = {
+      content: 'newer selection',
+      id: 'newer',
+      type: 'text',
+    };
+
+    act(() => {
+      useStore.setState({
+        chatContextSelectionsByContext: { topic: [newerSelection] },
+      });
+      result.current.restoreChatContextSelections('topic', [submittedSelection]);
+    });
+
+    expect(result.current.chatContextSelectionsByContext).toEqual({
+      topic: [submittedSelection, newerSelection],
+    });
+  });
+
   it('clearChatUploadFileList should clear the inputFilesList', () => {
     const { result } = renderHook(() => useStore());
 
-    // Populate the list to clear it later
     act(() => {
       useStore.setState({ chatUploadFileList: [{ id: 'abc' }] as any });
     });
@@ -62,89 +192,143 @@ describe('useFileStore:chat', () => {
     expect(result.current.chatUploadFileList).toEqual([]);
   });
 
-  // it('removeFile should call fileService.removeFile and update the store', async () => {
-  //   const { result } = renderHook(() => useStore());
-  //
-  //   const fileId = 'test-id';
-  //
-  //   // Mock the fileService.removeFile to resolve
-  //   vi.spyOn(fileService, 'removeFile').mockResolvedValue(undefined);
-  //
-  //   // Populate the list to remove an item later
-  //   act(() => {
-  //     useStore.setState(({ inputFilesList }) => ({ inputFilesList: [...inputFilesList, fileId] }));
-  //     //   // result.current.inputFilesList.push(fileId);
-  //   });
-  //
-  //   await act(async () => {
-  //     await result.current.removeFile(fileId);
-  //   });
-  //
-  //   expect(fileService.removeFile).toHaveBeenCalledWith(fileId);
-  //   expect(result.current.inputFilesList).toEqual([]);
-  // });
+  it('uploadChatFiles should reject unsupported files before upload in chat mode', async () => {
+    // chat mode: agent mode disabled and not a heterogeneous agent
+    mockAgentMode({ enableAgentMode: false, heterogeneous: false });
 
-  // describe('uploadFile', () => {
-  //   it('uploadFile should handle errors', async () => {
-  //     const { result } = renderHook(() => useStore());
-  //     const testFile = new File(['content'], 'test.png', { type: 'image/png' });
-  //
-  //     // 模拟 fileService.uploadFile 抛出错误
-  //     const errorMessage = 'Upload failed';
-  //     vi.spyOn(uploadService, 'uploadFile').mockRejectedValue(new Error(errorMessage));
-  //
-  //     // Mock console.error for testing
-  //
-  //     await act(async () => {
-  //       await result.current.uploadFile(testFile);
-  //     });
-  //
-  //     expect(uploadService.uploadFile).toHaveBeenCalledWith({
-  //       createdAt: testFile.lastModified,
-  //       data: await testFile.arrayBuffer(),
-  //       fileType: testFile.type,
-  //       name: testFile.name,
-  //       saveMode: 'local',
-  //       size: testFile.size,
-  //     });
-  //     // 由于上传失败，inputFilesList 应该没有变化
-  //     expect(result.current.inputFilesList).toEqual([]);
-  //
-  //     // 确保错误提示被调用
-  //     expect(notification.error).toHaveBeenCalled();
-  //   });
-  //
-  //   it('uploadFile should upload the file and update inputFilesList', async () => {
-  //     const { result } = renderHook(() => useStore());
-  //     const testFile = new File(['content'], 'test.png', { type: 'image/png' });
-  //
-  //     // 模拟 fileService.uploadFile 返回的数据
-  //     const uploadedFileData = {
-  //       createdAt: testFile.lastModified,
-  //       data: await testFile.arrayBuffer(),
-  //       fileType: testFile.type,
-  //       name: testFile.name,
-  //       saveMode: 'local',
-  //       size: testFile.size,
-  //     };
-  //
-  //     // Mock the fileService.uploadFile to resolve with uploadedFileData
-  //     vi.spyOn(uploadService, 'uploadFile').mockResolvedValue(uploadedFileData as DB_File);
-  //     vi.spyOn(fileService, 'createFile').mockResolvedValue({ id: 'new-file-id', url: '' });
-  //
-  //     await act(async () => {
-  //       await result.current.uploadFile(testFile);
-  //     });
-  //
-  //     expect(fileService.createFile).toHaveBeenCalledWith({
-  //       createdAt: testFile.lastModified,
-  //       data: await testFile.arrayBuffer(),
-  //       fileType: testFile.type,
-  //       name: testFile.name,
-  //       saveMode: 'local',
-  //       size: testFile.size,
-  //     });
-  //     expect(result.current.inputFilesList).toContain('new-file-id');
-  //   });
-  // });
+    const { result } = renderHook(() => useStore());
+    const uploadWithProgress = vi.fn();
+
+    act(() => {
+      useStore.setState({
+        chatUploadFileList: [],
+        uploadWithProgress: uploadWithProgress as any,
+      });
+    });
+
+    await act(async () => {
+      await result.current.uploadChatFiles(
+        [
+          new File(['<svg />'], 'icon.svg', { type: 'image/svg+xml' }),
+          new File(['zip'], 'archive.zip', { type: 'application/zip' }),
+        ],
+        AGENT_ID,
+      );
+    });
+
+    expect(uploadWithProgress).not.toHaveBeenCalled();
+    expect(result.current.chatUploadFileList).toEqual([]);
+    expect(toast.error).toHaveBeenCalledWith(expect.any(String));
+  });
+
+  it('uploadChatFiles should allow any file type in agent mode', async () => {
+    mockAgentMode({ enableAgentMode: true, heterogeneous: false });
+
+    const { result } = renderHook(() => useStore());
+    const uploadWithProgress = vi.fn().mockResolvedValue({ id: 'file-1', url: 'http://x/1' });
+
+    act(() => {
+      useStore.setState({
+        chatUploadFileList: [],
+        uploadWithProgress: uploadWithProgress as any,
+      });
+    });
+
+    await act(async () => {
+      await result.current.uploadChatFiles(
+        [new File(['zip'], 'archive.zip', { type: 'application/zip' })],
+        AGENT_ID,
+      );
+    });
+
+    expect(toast.error).not.toHaveBeenCalled();
+    expect(uploadWithProgress).toHaveBeenCalledTimes(1);
+  });
+
+  it('uploadChatFiles should allow any file type for heterogeneous agents', async () => {
+    mockAgentMode({ enableAgentMode: false, heterogeneous: true });
+
+    const { result } = renderHook(() => useStore());
+    const uploadWithProgress = vi.fn().mockResolvedValue({ id: 'file-2', url: 'http://x/2' });
+
+    act(() => {
+      useStore.setState({
+        chatUploadFileList: [],
+        uploadWithProgress: uploadWithProgress as any,
+      });
+    });
+
+    await act(async () => {
+      await result.current.uploadChatFiles(
+        [new File(['profile'], 'Communication_Notifications.provisionprofile')],
+        AGENT_ID,
+      );
+    });
+
+    expect(toast.error).not.toHaveBeenCalled();
+    expect(uploadWithProgress).toHaveBeenCalledTimes(1);
+  });
+
+  it('keeps a permission-denied upload in place with a retryable error', async () => {
+    mockAgentMode({ enableAgentMode: false, heterogeneous: false });
+
+    const { result } = renderHook(() => useStore());
+    const file = new File(['test'], 'test.txt', { type: 'text/plain' });
+
+    vi.spyOn(result.current, 'uploadWithProgress').mockRejectedValue({
+      data: { code: 'FORBIDDEN' },
+      message: 'Missing any of: file:upload:all, file:upload:owner',
+    });
+
+    await act(async () => {
+      await result.current.uploadChatFiles([file], AGENT_ID);
+    });
+
+    expect(result.current.chatUploadFileList).toEqual([
+      expect.objectContaining({
+        agentId: AGENT_ID,
+        error: 'You do not have permission to upload files in this workspace.',
+        id: 'test.txt',
+        status: 'error',
+      }),
+    ]);
+  });
+
+  describe('removeChatUploadFile', () => {
+    it('deletes the underlying file for a normal uploaded item', async () => {
+      const removeFile = vi.spyOn(fileService, 'removeFile').mockResolvedValue(undefined);
+      const { result } = renderHook(() => useStore());
+
+      act(() => {
+        useStore.setState({ chatUploadFileList: [{ id: 'file-1' }] as any });
+      });
+
+      await act(async () => {
+        await result.current.removeChatUploadFile('file-1');
+      });
+
+      expect(result.current.chatUploadFileList).toEqual([]);
+      expect(removeFile).toHaveBeenCalledWith('file-1');
+    });
+
+    it('skips file deletion for a restored item (skipRemoveFile)', async () => {
+      const removeFile = vi.spyOn(fileService, 'removeFile').mockResolvedValue(undefined);
+      const { result } = renderHook(() => useStore());
+
+      act(() => {
+        useStore.setState({
+          chatUploadFileList: [{ id: 'file-1', skipRemoveFile: true }] as any,
+        });
+      });
+
+      await act(async () => {
+        await result.current.removeChatUploadFile('file-1');
+      });
+
+      // draft entry is dropped, but the persisted file backing the original
+      // message must NOT be deleted
+      expect(result.current.chatUploadFileList).toEqual([]);
+      expect(removeFile).not.toHaveBeenCalled();
+    });
+  });
 });

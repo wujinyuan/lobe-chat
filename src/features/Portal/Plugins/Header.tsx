@@ -1,34 +1,41 @@
-import { ActionIcon } from '@lobehub/ui';
-import { Typography } from 'antd';
+import { getBuiltinPortalAction } from '@lobechat/builtin-tools/portals';
+import type { BuiltinPortalTitle } from '@lobechat/types';
 import isEqual from 'fast-deep-equal';
-import { ArrowLeft } from 'lucide-react';
-import { useTranslation } from 'react-i18next';
-import { Flexbox } from 'react-layout-kit';
 
-import PluginAvatar from '@/features/PluginAvatar';
 import { useChatStore } from '@/store/chat';
-import { chatPortalSelectors } from '@/store/chat/selectors';
-import { pluginHelpers, useToolStore } from '@/store/tool';
-import { toolSelectors } from '@/store/tool/selectors';
+import { chatPortalSelectors, dbMessageSelectors } from '@/store/chat/selectors';
 
+import HeaderChrome from '../components/Header';
+import Title from './Title';
+
+/**
+ * ToolUI portal header: the generic back/close chrome plus the tool's title and,
+ * when a tool registers them, header right-actions (e.g. prev/next nav).
+ */
 const Header = () => {
-  const [closeToolUI, toolUIIdentifier = ''] = useChatStore((s) => [
-    s.closeToolUI,
+  const [toolUIIdentifier = '', messageId] = useChatStore((s) => [
     chatPortalSelectors.toolUIIdentifier(s),
+    chatPortalSelectors.toolMessageId(s),
   ]);
+  const params = useChatStore(chatPortalSelectors.toolUIParams, isEqual);
+  const message = useChatStore(dbMessageSelectors.getDbMessageById(messageId || ''), isEqual);
 
-  const { t } = useTranslation('plugin');
-  const pluginMeta = useToolStore(toolSelectors.getMetaById(toolUIIdentifier), isEqual);
-  const pluginTitle = pluginHelpers.getPluginTitle(pluginMeta) ?? t('unknownPlugin');
+  const Actions = getBuiltinPortalAction(toolUIIdentifier) as BuiltinPortalTitle | undefined;
 
   return (
-    <Flexbox align={'center'} gap={4} horizontal>
-      <ActionIcon icon={ArrowLeft} onClick={() => closeToolUI()} />
-      <PluginAvatar identifier={toolUIIdentifier} size={28} />
-      <Typography.Text style={{ fontSize: 16 }} type={'secondary'}>
-        {pluginTitle}
-      </Typography.Text>
-    </Flexbox>
+    <HeaderChrome
+      title={<Title />}
+      rightExtra={
+        Actions ? (
+          <Actions
+            apiName={message?.plugin?.apiName}
+            identifier={toolUIIdentifier}
+            messageId={messageId || ''}
+            params={params}
+          />
+        ) : undefined
+      }
+    />
   );
 };
 

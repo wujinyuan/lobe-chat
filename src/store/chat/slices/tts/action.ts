@@ -1,35 +1,55 @@
-import { StateCreator } from 'zustand/vanilla';
+import type { ChatTTS } from '@lobechat/types';
 
 import { messageService } from '@/services/message';
-import { ChatStore } from '@/store/chat/store';
-import { ChatTTS } from '@/types/message';
+import { type ChatStore } from '@/store/chat/store';
+import { type StoreSetter } from '@/store/types';
 
 /**
  * enhance chat action like translate,tts
  */
-export interface ChatTTSAction {
-  clearTTS: (id: string) => Promise<void>;
-  ttsMessage: (
-    id: string,
-    state?: { contentMd5?: string; file?: string; voice?: string },
-  ) => Promise<void>;
-  updateMessageTTS: (id: string, data: Partial<ChatTTS> | false) => Promise<void>;
+
+type Setter = StoreSetter<ChatStore>;
+export const chatTTS = (set: Setter, get: () => ChatStore, _api?: unknown) =>
+  new ChatTTSActionImpl(set, get, _api);
+
+export class ChatTTSActionImpl {
+  readonly #get: () => ChatStore;
+
+  constructor(set: Setter, get: () => ChatStore, _api?: unknown) {
+    void _api;
+    void set;
+    this.#get = get;
+  }
+
+  #updateMessageTTS = async (id: string, data: Required<ChatTTS> | false): Promise<void> => {
+    // Optimistic update
+    this.#get().internal_dispatchMessage({
+      id,
+      key: 'tts',
+      type: 'updateMessageExtra',
+      value: data === false ? undefined : data,
+    });
+
+    // Persist to database
+    await messageService.updateMessageTTS(id, data);
+  };
+
+  clearMessageTTS = async (id: string): Promise<void> => {
+    await this.#updateMessageTTS(id, false);
+  };
+
+  saveMessageTTS = async (id: string, data: Required<ChatTTS>): Promise<void> => {
+    await this.#updateMessageTTS(id, data);
+  };
+
+  startMessageTTS = (id: string): void => {
+    this.#get().internal_dispatchMessage({
+      id,
+      key: 'tts',
+      type: 'updateMessageExtra',
+      value: {},
+    });
+  };
 }
 
-export const chatTTS: StateCreator<ChatStore, [['zustand/devtools', never]], [], ChatTTSAction> = (
-  set,
-  get,
-) => ({
-  clearTTS: async (id) => {
-    await get().updateMessageTTS(id, false);
-  },
-
-  ttsMessage: async (id, state = {}) => {
-    await get().updateMessageTTS(id, state);
-  },
-
-  updateMessageTTS: async (id, data) => {
-    await messageService.updateMessageTTS(id, data);
-    await get().refreshMessages();
-  },
-});
+export type ChatTTSAction = Pick<ChatTTSActionImpl, keyof ChatTTSActionImpl>;

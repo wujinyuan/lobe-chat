@@ -1,87 +1,108 @@
-import { Form, type FormItemProps } from '@lobehub/ui';
-import { Button, Segmented, Switch } from 'antd';
+import { type FormItemProps } from '@lobehub/ui';
+import { Flexbox, Form } from '@lobehub/ui';
+import { Button, Switch, Tabs } from '@lobehub/ui/base-ui';
+import { CopyIcon } from 'lucide-react';
 import { memo, useState } from 'react';
 import { useTranslation } from 'react-i18next';
-import { Flexbox } from 'react-layout-kit';
 
 import { FORM_STYLE } from '@/const/layoutTokens';
+import { useImgToClipboard } from '@/hooks/useImgToClipboard';
 import { useIsMobile } from '@/hooks/useIsMobile';
 import { ImageType, imageTypeOptions, useScreenshot } from '@/hooks/useScreenshot';
-import { useSessionStore } from '@/store/session';
-import { sessionMetaSelectors } from '@/store/session/selectors';
+import { useAgentStore } from '@/store/agent';
+import { agentSelectors } from '@/store/agent/selectors';
 
-import { useStyles } from '../style';
+import { useShareData } from '../ShareDataProvider';
+import { styles } from '../style';
 import Preview from './Preview';
-import { FieldType } from './type';
+import { type FieldType } from './type';
+import { WidthMode } from './type';
 
 const DEFAULT_FIELD_VALUE: FieldType = {
   imageType: ImageType.JPG,
-  withBackground: true,
+  widthMode: WidthMode.Wide,
+  withBackground: false,
   withFooter: true,
   withPluginInfo: false,
   withSystemRole: false,
 };
 
-const ShareImage = memo<{ mobile?: boolean }>(({ mobile }) => {
-  const currentAgentTitle = useSessionStore(sessionMetaSelectors.currentAgentTitle);
+const ShareImage = memo<{ mobile?: boolean }>(() => {
+  const currentAgentTitle = useAgentStore(agentSelectors.currentAgentDisplayName);
   const [fieldValue, setFieldValue] = useState<FieldType>(DEFAULT_FIELD_VALUE);
   const { t } = useTranslation(['chat', 'common']);
-  const { styles } = useStyles();
+  const { context, dbMessages } = useShareData();
   const { loading, onDownload, title } = useScreenshot({
     imageType: fieldValue.imageType,
-    title: currentAgentTitle,
-    width: mobile ? 720 : undefined,
+    title: currentAgentTitle ?? undefined,
   });
+  const { loading: copyLoading, onCopy } = useImgToClipboard();
+
+  const widthModeOptions = [
+    { key: WidthMode.Wide, label: t('shareModal.widthMode.wide') },
+    { key: WidthMode.Narrow, label: t('shareModal.widthMode.narrow') },
+  ];
 
   const settings: FormItemProps[] = [
     {
+      children: <Tabs items={widthModeOptions} />,
+      label: t('shareModal.widthMode.label'),
+      layout: 'horizontal',
+      minWidth: undefined,
+      name: 'widthMode',
+      valuePropName: 'activeKey',
+    },
+    {
       children: <Switch />,
       label: t('shareModal.withSystemRole'),
+      layout: 'horizontal',
       minWidth: undefined,
       name: 'withSystemRole',
       valuePropName: 'checked',
     },
     {
       children: <Switch />,
-      label: t('shareModal.withBackground'),
-      minWidth: undefined,
-      name: 'withBackground',
-      valuePropName: 'checked',
-    },
-    {
-      children: <Switch />,
       label: t('shareModal.withFooter'),
+      layout: 'horizontal',
       minWidth: undefined,
       name: 'withFooter',
       valuePropName: 'checked',
     },
     {
-      children: <Segmented options={imageTypeOptions} />,
+      children: <Tabs items={imageTypeOptions} />,
       label: t('shareModal.imageType'),
+      layout: 'horizontal',
       minWidth: undefined,
       name: 'imageType',
+      valuePropName: 'activeKey',
     },
   ];
 
   const isMobile = useIsMobile();
 
   const button = (
-    <Button
-      block
-      loading={loading}
-      onClick={onDownload}
-      size={isMobile ? undefined : 'large'}
-      type={'primary'}
-    >
-      {t('shareModal.download')}
-    </Button>
+    <>
+      <Button
+        block
+        icon={CopyIcon}
+        loading={copyLoading}
+        size={isMobile ? undefined : 'large'}
+        type={'primary'}
+        onClick={() => onCopy()}
+      >
+        {t('copy', { ns: 'common' })}
+      </Button>
+      <Button block loading={loading} size={isMobile ? undefined : 'large'} onClick={onDownload}>
+        {t('shareModal.download')}
+      </Button>
+    </>
   );
 
   return (
     <>
       <Flexbox className={styles.body} gap={16} horizontal={!isMobile}>
-        <Preview title={title} {...fieldValue} />
-        <Flexbox className={styles.sidebar} gap={16}>
+        <Preview context={context} messages={dbMessages} title={title} {...fieldValue} />
+        <Flexbox className={styles.sidebar} gap={12}>
           <Form
             initialValues={DEFAULT_FIELD_VALUE}
             items={settings}
@@ -92,7 +113,11 @@ const ShareImage = memo<{ mobile?: boolean }>(({ mobile }) => {
           {!isMobile && button}
         </Flexbox>
       </Flexbox>
-      {isMobile && <Flexbox className={styles.footer}>{button}</Flexbox>}
+      {isMobile && (
+        <Flexbox horizontal className={styles.footer} gap={8}>
+          {button}
+        </Flexbox>
+      )}
     </>
   );
 });

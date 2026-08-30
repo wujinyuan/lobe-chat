@@ -1,18 +1,24 @@
-import { Button } from 'antd';
+import { Flexbox } from '@lobehub/ui';
+import { Button } from '@lobehub/ui/base-ui';
 import { memo } from 'react';
 import { useTranslation } from 'react-i18next';
-import { Flexbox } from 'react-layout-kit';
 
 import UserInfo from '../UserInfo';
+import { trackLoginOrSignupClicked } from './trackLoginOrSignupClicked';
 
 const UserLoginOrSignup = memo<{ onClick: () => void }>(({ onClick }) => {
   const { t } = useTranslation('auth');
+
+  const handleClick = () => {
+    void trackLoginOrSignupClicked({ spm: 'homepage.login_or_signup.click' });
+    onClick();
+  };
 
   return (
     <>
       <UserInfo />
       <Flexbox paddingBlock={12} paddingInline={16} width={'100%'}>
-        <Button block onClick={onClick} type={'primary'}>
+        <Button block type={'primary'} onClick={handleClick}>
           {t('loginOrSignup')}
         </Button>
       </Flexbox>
