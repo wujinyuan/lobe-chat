@@ -31,20 +31,20 @@ git checkout "$target_branch"
 git config user.name "github-actions[bot]"
 git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
 
-if ! git merge --no-edit "$release_commit"; then
-  conflicts=$(git diff --name-only --diff-filter=U)
-  if [[ "$conflicts" != ".github/workflows/sync.yml" ]]; then
-    echo "Merge conflicts require manual resolution:" >&2
-    printf '%s\n' "$conflicts" >&2
-    git merge --abort
-    exit 1
-  fi
+git merge --no-commit --no-ff "$release_commit" || true
 
-  echo "Keeping the fork-owned stable sync workflow"
-  git checkout --ours -- .github/workflows/sync.yml
-  git add .github/workflows/sync.yml
-  git commit --no-edit
+echo "Keeping fork-owned GitHub Actions workflows"
+git restore --source="$current_commit" --staged --worktree -- .github/workflows
+
+conflicts=$(git diff --name-only --diff-filter=U)
+if [[ -n "$conflicts" ]]; then
+  echo "Merge conflicts require manual resolution:" >&2
+  printf '%s\n' "$conflicts" >&2
+  git merge --abort
+  exit 1
 fi
+
+git commit -m "Merge stable release ${latest_tag}"
 
 git push origin "$target_branch"
 

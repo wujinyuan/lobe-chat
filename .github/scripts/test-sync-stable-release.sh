@@ -30,7 +30,9 @@ base_commit=$(git -C "$seed" rev-parse HEAD)
 
 printf 'v2\n' > "$seed/version.txt"
 printf 'name: upstream sync\n' > "$seed/.github/workflows/sync.yml"
-git -C "$seed" commit -am v2 >/dev/null
+printf 'name: upstream only\n' > "$seed/.github/workflows/upstream-only.yml"
+git -C "$seed" add version.txt .github/workflows
+git -C "$seed" commit -m v2 >/dev/null
 git -C "$seed" tag v2.0.0
 git -C "$seed" push upstream main --tags >/dev/null
 
@@ -64,6 +66,11 @@ fi
 fork_file=$(git --git-dir="$target" show main:.github/workflows/sync.yml)
 if [[ "$fork_file" != "name: fork stable sync" ]]; then
   echo "expected target main to preserve fork automation, got: $fork_file" >&2
+  exit 1
+fi
+
+if git --git-dir="$target" cat-file -e main:.github/workflows/upstream-only.yml 2>/dev/null; then
+  echo "expected target main to exclude upstream-owned workflows" >&2
   exit 1
 fi
 
